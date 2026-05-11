@@ -324,6 +324,32 @@ void propertyCard(core::dsl::Ui& ui, const std::string& id, const std::string& t
         .size(width, 144.0f)
         .visualStateFrom(id + ".bg", 0.95f)
         .content([&] {
+            if (kind == "blur") {
+                ui.rect(id + ".circle.primary")
+                    .x(width * 0.14f)
+                    .y(20.0f)
+                    .size(64.0f, 64.0f)
+                    .color(withAlpha(accent(), 0.95f))
+                    .radius(32.0f)
+                    .build();
+
+                ui.rect(id + ".circle.warm")
+                    .x(width * 0.48f)
+                    .y(62.0f)
+                    .size(58.0f, 58.0f)
+                    .color({1.0f, 0.54f, 0.18f, 0.92f})
+                    .radius(29.0f)
+                    .build();
+
+                ui.rect(id + ".circle.cool")
+                    .x(width * 0.66f)
+                    .y(16.0f)
+                    .size(46.0f, 46.0f)
+                    .color({0.16f, 0.82f, 0.72f, 0.90f})
+                    .radius(23.0f)
+                    .build();
+            }
+
             auto rect = ui.rect(id + ".bg")
                 .size(width, 144.0f)
                 .states(color, buttonHover(color), buttonPressed(color))
