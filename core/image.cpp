@@ -1,4 +1,5 @@
 #include "core/image.h"
+#include "core/async.h"
 #include "core/network.h"
 
 #ifndef GLFW_INCLUDE_NONE
@@ -15,7 +16,6 @@
 #include <fstream>
 #include <mutex>
 #include <sstream>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -48,8 +48,6 @@ std::unordered_map<std::string, std::string> gDownloadedPathCache;
 std::unordered_map<std::string, bool> gDownloadInFlight;
 std::unordered_map<std::string, bool> gDownloadFailed;
 std::mutex gRemoteMutex;
-std::mutex gThreadMutex;
-std::vector<std::thread> gDownloadThreads;
 std::atomic<bool> gRemoteImageReady{false};
 
 std::string lowerCopy(std::string value) {
@@ -213,25 +211,30 @@ std::string resolveRemoteImagePath(const std::string& url, bool* pending) {
         }
     }
 
-    std::thread worker([url, localPath] {
-        const bool ok = network::downloadUrlToFile(url, localPath);
-        {
-            std::lock_guard<std::mutex> lock(gRemoteMutex);
-            gDownloadInFlight.erase(url);
-            if (ok && std::filesystem::exists(localPath)) {
-                gDownloadedPathCache[url] = localPath;
-                gDownloadFailed.erase(url);
-            } else {
-                gDownloadFailed[url] = true;
-                std::remove(localPath.c_str());
+    const bool started = async::restart(
+        "image.remote." + url,
+        [url, localPath] {
+            return network::downloadUrlToFile(url, localPath);
+        },
+        [url, localPath](const async::Result<bool>& result) {
+            const bool ok = result.ok && result.value;
+            {
+                std::lock_guard<std::mutex> lock(gRemoteMutex);
+                gDownloadInFlight.erase(url);
+                if (ok && std::filesystem::exists(localPath)) {
+                    gDownloadedPathCache[url] = localPath;
+                    gDownloadFailed.erase(url);
+                } else {
+                    gDownloadFailed[url] = true;
+                    std::remove(localPath.c_str());
+                }
             }
-        }
-        gRemoteImageReady.store(true);
-        network::postNetworkReadyEvent();
-    });
-    {
-        std::lock_guard<std::mutex> lock(gThreadMutex);
-        gDownloadThreads.push_back(std::move(worker));
+            gRemoteImageReady.store(true);
+        });
+    if (!started) {
+        std::lock_guard<std::mutex> lock(gRemoteMutex);
+        gDownloadInFlight.erase(url);
+        gDownloadFailed[url] = true;
     }
 
     return {};
@@ -263,57 +266,56 @@ std::string resolveBingImagePath(const std::string& uri, bool* pending) {
         }
     }
 
-    std::thread worker([uri] {
-        std::string payload;
+    struct BingDownloadResult {
+        bool ok = false;
         std::string imageUrl;
         std::string localPath;
-        bool ok = network::downloadUrlToString(buildBingDailyApiUrl(uri), payload);
-        if (ok) {
-            imageUrl = extractBingImageUrlFromJson(payload);
-            localPath = buildDownloadedImagePath(imageUrl);
-            if (imageUrl.empty() || localPath.empty()) {
-                ok = false;
-            } else if (!std::filesystem::exists(localPath)) {
-                ok = network::downloadUrlToFile(imageUrl, localPath);
-            }
-        }
-        {
-            std::lock_guard<std::mutex> lock(gRemoteMutex);
-            gDownloadInFlight.erase(uri);
-            if (ok && std::filesystem::exists(localPath)) {
-                gDownloadedPathCache[uri] = localPath;
-                gDownloadedPathCache[imageUrl] = localPath;
-                gDownloadFailed.erase(uri);
-            } else {
-                gDownloadFailed[uri] = true;
-                if (!localPath.empty()) {
-                    std::remove(localPath.c_str());
+    };
+
+    const bool started = async::restart(
+        "image.bing." + uri,
+        [uri] {
+            BingDownloadResult result;
+            std::string payload;
+            result.ok = network::downloadUrlToString(buildBingDailyApiUrl(uri), payload);
+            if (result.ok) {
+                result.imageUrl = extractBingImageUrlFromJson(payload);
+                result.localPath = buildDownloadedImagePath(result.imageUrl);
+                if (result.imageUrl.empty() || result.localPath.empty()) {
+                    result.ok = false;
+                } else if (!std::filesystem::exists(result.localPath)) {
+                    result.ok = network::downloadUrlToFile(result.imageUrl, result.localPath);
                 }
             }
-        }
-        gRemoteImageReady.store(true);
-        network::postNetworkReadyEvent();
-    });
-    {
-        std::lock_guard<std::mutex> lock(gThreadMutex);
-        gDownloadThreads.push_back(std::move(worker));
+            return result;
+        },
+        [uri](const async::Result<BingDownloadResult>& result) {
+            const bool ok = result.ok && result.value.ok;
+            const std::string& imageUrl = result.value.imageUrl;
+            const std::string& localPath = result.value.localPath;
+            {
+                std::lock_guard<std::mutex> lock(gRemoteMutex);
+                gDownloadInFlight.erase(uri);
+                if (ok && std::filesystem::exists(localPath)) {
+                    gDownloadedPathCache[uri] = localPath;
+                    gDownloadedPathCache[imageUrl] = localPath;
+                    gDownloadFailed.erase(uri);
+                } else {
+                    gDownloadFailed[uri] = true;
+                    if (!localPath.empty()) {
+                        std::remove(localPath.c_str());
+                    }
+                }
+            }
+            gRemoteImageReady.store(true);
+        });
+    if (!started) {
+        std::lock_guard<std::mutex> lock(gRemoteMutex);
+        gDownloadInFlight.erase(uri);
+        gDownloadFailed[uri] = true;
     }
 
     return {};
-}
-
-void joinDownloadThreads() {
-    std::vector<std::thread> threads;
-    {
-        std::lock_guard<std::mutex> lock(gThreadMutex);
-        threads.swap(gDownloadThreads);
-    }
-
-    for (std::thread& thread : threads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
 }
 
 std::string resolveLocalImagePath(const std::string& source) {
@@ -588,7 +590,6 @@ bool ImagePrimitive::consumeRemoteImageReady() {
 }
 
 void ImagePrimitive::releaseCachedTextures() {
-    joinDownloadThreads();
     for (auto& item : gTextureCache) {
         if (item.second.texture != 0) {
             glDeleteTextures(1, &item.second.texture);

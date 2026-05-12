@@ -13,6 +13,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "core/async.h"
 #include "core/dsl_runtime.h"
 #include "core/network.h"
 #include "core/platform.h"
@@ -271,7 +272,7 @@ void destroyManagedWindow(std::unique_ptr<ManagedWindow>& managed) {
     managed.reset();
 }
 
-bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool networkTextReady) {
+bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool externalReady) {
     if (managed.window == nullptr || glfwWindowShouldClose(managed.window)) {
         return false;
     }
@@ -301,7 +302,7 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool networ
         managed.logicalHeight = logicalHeight;
     };
 
-    if (!managed.composed || managed.logicalWidth != logicalWidth || managed.logicalHeight != logicalHeight || networkTextReady) {
+    if (!managed.composed || managed.logicalWidth != logicalWidth || managed.logicalHeight != logicalHeight || externalReady) {
         composeFrame();
         managed.runtime.markFullRedraw();
         managed.state.needsRender = true;
@@ -493,10 +494,11 @@ int main() {
 
         const float dpiScale = getDpiScale(window);
         const float pointerScale = getPointerScale(window);
-        const bool networkTextReady = core::network::consumeAnyTextReady();
+        const bool asyncReady = core::async::dispatchReady();
+        const bool externalReady = core::network::consumeAnyTextReady() || asyncReady;
         const bool mainInputEnabled = windowState.modalChildWindow == nullptr;
 
-        if (app::update(window, deltaSeconds, framebufferWidth, framebufferHeight, dpiScale, pointerScale, networkTextReady, mainInputEnabled)) {
+        if (app::update(window, deltaSeconds, framebufferWidth, framebufferHeight, dpiScale, pointerScale, externalReady, mainInputEnabled)) {
             windowState.needsRender = true;
         }
 
@@ -512,7 +514,7 @@ int main() {
         }
 
         for (std::unique_ptr<ManagedWindow>& managed : childWindows) {
-            if (managed && updateManagedWindow(*managed, deltaSeconds, networkTextReady)) {
+            if (managed && updateManagedWindow(*managed, deltaSeconds, externalReady)) {
                 // child window rendered inside updateManagedWindow
             }
         }

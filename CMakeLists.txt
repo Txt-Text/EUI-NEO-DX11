@@ -62,6 +62,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 set(CORE_SOURCES
+    core/async.cpp
     core/image.cpp
     core/ime_bridge.c
     core/network.cpp

@@ -48,6 +48,7 @@ void compose(core::dsl::Ui& ui, const core::dsl::Screen& screen);
 - isAnimating
 - render
 - shutdown
+- app::async 后台任务
 - 按屏幕刷新率主动节流
 - 无动画时等待事件休眠
 

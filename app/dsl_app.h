@@ -5,6 +5,7 @@
 #include <glad/glad.h>
 
 #include "3rd/stb_image.h"
+#include "core/async.h"
 #include "core/dsl_runtime.h"
 #include "core/network.h"
 #include "core/text.h"
@@ -16,6 +17,21 @@
 #include <vector>
 
 namespace app {
+
+namespace async {
+
+using core::async::CancelToken;
+using core::async::Result;
+using core::async::Status;
+using core::async::cancel;
+using core::async::failure;
+using core::async::restart;
+using core::async::runOnce;
+using core::async::running;
+using core::async::status;
+using core::async::success;
+
+} // namespace async
 
 struct DslAppConfig {
     const char* titleValue = "App";
@@ -260,14 +276,15 @@ bool initialize(GLFWwindow* window) {
 }
 
 bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale) {
-    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, core::network::consumeAnyTextReady());
+    const bool asyncReady = core::async::dispatchReady();
+    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, core::network::consumeAnyTextReady() || asyncReady);
 }
 
-bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool networkTextReady) {
-    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, networkTextReady, true);
+bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool externalReady) {
+    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, externalReady, true);
 }
 
-bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool networkTextReady, bool inputEnabled) {
+bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool externalReady, bool inputEnabled) {
     if (windowWidth <= 0 || windowHeight <= 0 || dpiScale <= 0.0f) {
         return false;
     }
@@ -291,7 +308,7 @@ bool update(GLFWwindow* window, float deltaSeconds, int windowWidth, int windowH
     }
 
     bool changed = false;
-    if (networkTextReady) {
+    if (externalReady) {
         composeFrame();
         detail::dslRuntime().markFullRedraw();
         changed = true;
@@ -325,6 +342,7 @@ void releaseGraphicsResources() {
 }
 
 void shutdown() {
+    core::async::shutdown();
     detail::dslRuntime().shutdown();
     core::network::shutdown();
 }

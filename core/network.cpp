@@ -1,4 +1,5 @@
 #include "core/network.h"
+#include "core/async.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -23,13 +24,10 @@
 #include <atomic>
 #include <cstdio>
 #include <filesystem>
-#include <functional>
 #include <fstream>
 #include <mutex>
 #include <sstream>
-#include <thread>
 #include <unordered_map>
-#include <vector>
 
 namespace core::network {
 namespace {
@@ -42,9 +40,7 @@ struct TextState {
 };
 
 std::mutex gTextMutex;
-std::mutex gThreadMutex;
 std::unordered_map<std::string, TextState> gTextRequests;
-std::vector<std::thread> gThreads;
 std::atomic<bool> gAnyTextReady{false};
 
 #if defined(EUI_HAS_CURL)
@@ -72,25 +68,6 @@ bool ensureCurlReady() {
     return ready;
 }
 #endif
-
-void trackThread(std::thread thread) {
-    std::lock_guard<std::mutex> lock(gThreadMutex);
-    gThreads.push_back(std::move(thread));
-}
-
-void joinThreads() {
-    std::vector<std::thread> threads;
-    {
-        std::lock_guard<std::mutex> lock(gThreadMutex);
-        threads.swap(gThreads);
-    }
-
-    for (std::thread& thread : threads) {
-        if (thread.joinable()) {
-            thread.join();
-        }
-    }
-}
 
 } // namespace
 
@@ -213,19 +190,26 @@ void requestText(const std::string& key, const std::string& url) {
         state.body.clear();
     }
 
-    trackThread(std::thread([key, url] {
-        std::string body;
-        const bool ok = downloadUrlToString(url, body);
-        {
-            std::lock_guard<std::mutex> lock(gTextMutex);
-            TextState& state = gTextRequests[key];
-            state.ready = true;
-            state.ok = ok;
-            state.body = ok ? std::move(body) : std::string{};
-        }
-        gAnyTextReady.store(true);
-        postNetworkReadyEvent();
-    }));
+    async::runOnce(
+        "network.text." + key,
+        [url] {
+            std::string body;
+            const bool ok = downloadUrlToString(url, body);
+            if (!ok) {
+                return async::failure<std::string>("Request failed.");
+            }
+            return async::success(std::move(body));
+        },
+        [key](const async::Result<std::string>& result) {
+            {
+                std::lock_guard<std::mutex> lock(gTextMutex);
+                TextState& state = gTextRequests[key];
+                state.ready = true;
+                state.ok = result.ok;
+                state.body = result.ok ? result.value : std::string{};
+            }
+            gAnyTextReady.store(true);
+        });
 }
 
 TextResult textResult(const std::string& key) {
@@ -246,7 +230,6 @@ void postNetworkReadyEvent() {
 }
 
 void shutdown() {
-    joinThreads();
 #if defined(EUI_HAS_CURL)
     curl_global_cleanup();
 #endif
