@@ -512,7 +512,10 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
     const float chartHeight = 236.0f;
     const float stepperGap = 18.0f;
     const float stepperWidth = std::max(132.0f, std::min(214.0f, (fieldWidth - stepperGap * 2.0f) / 3.0f));
+    const float stepperRowWidth = stepperWidth * 3.0f + stepperGap * 2.0f;
     const float pickerWidth = std::max(154.0f, std::min(210.0f, (fieldWidth - pickerGap * 2.0f) / 3.0f));
+    const float choiceWidth = std::max(180.0f, (fieldWidth - 18.0f) * 0.5f);
+    const float choiceRowWidth = choiceWidth * 2.0f + 18.0f;
 
     ui.text("controls.components.title")
         .size(width, 30.0f)
@@ -522,11 +525,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .color(textPrimary())
         .build();
 
-    ui.flow("controls.buttons")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("controls.buttons")
+        .size(fieldWidth, 54.0f)
         .gap(18.0f)
-        .lineGap(12.0f)
         .content([&] {
             components::button(ui, "control.primary")
                 .size(buttonWidth, 54.0f)
@@ -645,16 +646,15 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .width(fieldWidth)
         .height(core::SizeValue::wrapContent())
         .gap(18.0f)
+        .alignItems(core::Align::CENTER)
         .content([&] {
-            ui.flow("controls.choice.row")
-                .width(fieldWidth)
-                .height(core::SizeValue::wrapContent())
+            ui.row("controls.choice.row")
+                .size(choiceRowWidth, 42.0f)
                 .gap(18.0f)
-                .lineGap(12.0f)
                 .content([&] {
                     components::segmented(ui, "control.segmented")
                         .theme(themeColors())
-                        .size(std::max(180.0f, (fieldWidth - 18.0f) * 0.5f), 38.0f)
+                        .size(choiceWidth, 38.0f)
                         .items({"Small", "Medium", "Large"})
                         .selected(sampleSegment)
                         .transition(pageTransition())
@@ -665,7 +665,7 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
 
                     components::tabs(ui, "control.tabs")
                         .theme(themeColors())
-                        .size(std::max(180.0f, (fieldWidth - 18.0f) * 0.5f), 42.0f)
+                        .size(choiceWidth, 42.0f)
                         .items({"Overview", "Details", "Logs"})
                         .selected(sampleTab)
                         .transition(pageTransition())
@@ -676,18 +676,12 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
                 })
                 .build();
 
-            ui.flow("controls.stepper.row")
-                .width(fieldWidth)
-                .height(core::SizeValue::wrapContent())
+            ui.row("controls.stepper.row")
+                .size(stepperRowWidth, 84.0f)
                 .gap(stepperGap)
-                .lineGap(12.0f)
                 .content([&] {
                     ui.column("controls.stepper.dec")
-                        .minWidth(132.0f)
-                        .maxWidth(214.0f)
-                        .width(core::SizeValue::fill())
-                        .flexGrow(1.0f)
-                        .height(84.0f)
+                        .size(stepperWidth, 84.0f)
                         .gap(8.0f)
                         .justifyContent(core::Align::CENTER)
                         .alignItems(core::Align::CENTER)
@@ -723,11 +717,7 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
                         .build();
 
                     ui.column("controls.stepper.hex")
-                        .minWidth(132.0f)
-                        .maxWidth(214.0f)
-                        .width(core::SizeValue::fill())
-                        .flexGrow(1.0f)
-                        .height(84.0f)
+                        .size(stepperWidth, 84.0f)
                         .gap(8.0f)
                         .justifyContent(core::Align::CENTER)
                         .alignItems(core::Align::CENTER)
@@ -760,11 +750,7 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
                         .build();
 
                     ui.column("controls.stepper.bin")
-                        .minWidth(132.0f)
-                        .maxWidth(214.0f)
-                        .width(core::SizeValue::fill())
-                        .flexGrow(1.0f)
-                        .height(84.0f)
+                        .size(stepperWidth, 84.0f)
                         .gap(8.0f)
                         .justifyContent(core::Align::CENTER)
                         .alignItems(core::Align::CENTER)
@@ -808,11 +794,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .color(textPrimary())
         .build();
 
-    ui.flow("controls.feedback")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("controls.feedback")
+        .size(fieldWidth, 54.0f)
         .gap(18.0f)
-        .lineGap(12.0f)
         .content([&] {
             components::button(ui, "control.dialog")
                 .theme(themeColors(), false)
@@ -939,11 +923,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .color(textPrimary())
         .build();
 
-    ui.flow("controls.pickers.row")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("controls.pickers.row")
+        .size(fieldWidth, 44.0f)
         .gap(pickerGap)
-        .lineGap(12.0f)
         .content([&] {
             components::button(ui, "control.datepicker.open")
                 .theme(themeColors(), false)
@@ -1007,11 +989,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         })
         .build();
 
-    ui.flow("controls.data.row")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("controls.data.row")
+        .size(fieldWidth, dataRowHeight)
         .gap(dataRowGap)
-        .lineGap(14.0f)
         .content([&] {
             components::dropdown(ui, "control.dropdown")
                 .theme(themeColors())
@@ -1057,11 +1037,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .color(textPrimary())
         .build();
 
-    ui.flow("controls.charts.row")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("controls.charts.row")
+        .size(fieldWidth, chartHeight)
         .gap(chartGap)
-        .lineGap(14.0f)
         .content([&] {
             components::linechart(ui, "control.chart.line")
                 .theme(themeColors())
@@ -1100,11 +1078,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         .color(textPrimary())
         .build();
 
-    ui.flow("properties.a")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("properties.a")
+        .size(fieldWidth, rowHeight)
         .gap(cardGap)
-        .lineGap(14.0f)
         .content([&] {
             propertyCard(ui, "prop.color", "Color", "hover + press", {0.22f, 0.48f, 0.82f, 1.0f}, "color", cardWidth);
             propertyCard(ui, "prop.border", "Border", "animated edge", surface(), "border", cardWidth);
@@ -1112,11 +1088,9 @@ void composeControlsPage(core::dsl::Ui& ui, float width, float height) {
         })
         .build();
 
-    ui.flow("properties.b")
-        .width(fieldWidth)
-        .height(core::SizeValue::wrapContent())
+    ui.row("properties.b")
+        .size(fieldWidth, rowHeight)
         .gap(cardGap)
-        .lineGap(14.0f)
         .content([&] {
             propertyCard(ui, "prop.alpha", "Opacity", "transparent fill", {0.86f, 0.38f, 0.52f, 0.58f}, "color", cardWidth);
             propertyCard(ui, "prop.blur", "Blur", "glass card", {0.78f, 0.92f, 1.0f, 0.22f}, "blur", cardWidth);
