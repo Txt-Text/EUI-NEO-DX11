@@ -95,7 +95,7 @@ jobs:
           tar -czf "$out" "${files[@]}"
 
       - name: upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: EUI-NEO-${{ matrix.platform }}-x64
           path: dist/*
