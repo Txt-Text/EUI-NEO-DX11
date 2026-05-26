@@ -80,21 +80,25 @@ public:
         const float dragStep = std::max(80.0f, sideStep);
         const std::function<void(float)> onChange = onChange_;
         CarouselState& state = stateFor(id_);
-        const auto scrollToIndex = [count, center, onChange](const core::ScrollEvent& event) {
+        const core::Transition cardTransition = state.directMotion ? core::Transition::none() : transition_;
+        const auto scrollToIndex = [&state, count, center, onChange](const core::ScrollEvent& event) {
             if (!onChange || count <= 1 || event.y == 0.0) {
                 return;
             }
             constexpr float scrollSensitivity = 0.18f;
             const float delta = std::clamp(static_cast<float>(event.y), -1.0f, 1.0f);
+            state.directMotion = true;
             onChange(clampIndex(center - delta * scrollSensitivity, count));
         };
         const auto beginRootDrag = [&state, center, safeWidth](const core::PointerEvent&, const core::Rect& bounds) {
             state.dragStartIndex = center;
             state.pointerScale = bounds.width > 0.0f ? bounds.width / safeWidth : 1.0f;
+            state.directMotion = true;
         };
         const auto beginCardDrag = [&state, center, cardWidth](const core::PointerEvent&, const core::Rect& bounds) {
             state.dragStartIndex = center;
             state.pointerScale = bounds.width > 0.0f ? bounds.width / cardWidth : 1.0f;
+            state.directMotion = true;
         };
         const auto dragToIndex = [&state, count, dragStep, onChange](const core::dsl::DragEvent& event) {
             if (!onChange || count <= 1 || dragStep <= 0.0f) {
@@ -102,6 +106,14 @@ public:
             }
             const float logicalTotalX = static_cast<float>(event.totalX) / std::max(0.001f, state.pointerScale);
             const float next = state.dragStartIndex - logicalTotalX / dragStep;
+            state.directMotion = true;
+            onChange(clampIndex(next, count));
+        };
+        const auto jumpToIndex = [&state, count, onChange](float next) {
+            if (!onChange || count <= 1) {
+                return;
+            }
+            state.directMotion = false;
             onChange(clampIndex(next, count));
         };
 
@@ -122,10 +134,10 @@ public:
                     if (itemIndex < 0 || itemIndex >= count) {
                         continue;
                     }
-                    drawCard(itemIndex, cardX, 0.0f, cardWidth, cardHeight, sideStep, center, onChange, scrollToIndex, beginCardDrag, dragToIndex);
+                    drawCard(itemIndex, cardX, 0.0f, cardWidth, cardHeight, sideStep, center, cardTransition, jumpToIndex, scrollToIndex, beginCardDrag, dragToIndex);
                 }
 
-                drawIndicators(safeWidth, safeHeight, count, static_cast<int>(std::round(center)), onChange);
+                drawIndicators(safeWidth, safeHeight, count, static_cast<int>(std::round(center)), jumpToIndex);
             })
             .build();
     }
@@ -146,6 +158,7 @@ private:
     struct CarouselState {
         float dragStartIndex = 0.0f;
         float pointerScale = 1.0f;
+        bool directMotion = false;
     };
 
     static CarouselState& stateFor(const std::string& id) {
@@ -179,6 +192,7 @@ private:
                   float cardHeight,
                   float sideStep,
                   float center,
+                  const core::Transition& cardTransition,
                   const std::function<void(float)>& onChange,
                   const std::function<void(const core::ScrollEvent&)>& onScroll,
                   const std::function<void(const core::PointerEvent&, const core::Rect&)>& onPress,
@@ -195,6 +209,7 @@ private:
         const float textShift = -distance * parallax_ * 0.08f;
         const int z = 100 - static_cast<int>(std::round(absDistance * 10.0f));
         const bool active = absDistance < 0.55f;
+        const bool drawShadow = active && style_.shadow.enabled;
         const std::string cardId = id_ + ".card." + std::to_string(itemIndex);
         const bool imageReady = item.source.empty() || core::ImagePrimitive::isSourceReady(item.source);
 
@@ -206,7 +221,7 @@ private:
             .scale(scale)
             .transformOrigin(0.5f, 0.5f)
             .opacity(opacity)
-            .transition(transition_)
+            .transition(cardTransition)
             .animate(core::AnimProperty::Frame | core::AnimProperty::Transform | core::AnimProperty::Opacity)
             .content([&] {
                 ui_.rect(cardId + ".surface")
@@ -214,7 +229,7 @@ private:
                     .color(style_.background)
                     .radius(style_.radius)
                     .border(1.0f, style_.border)
-                    .shadow(style_.shadow)
+                    .shadow(drawShadow ? style_.shadow : core::Shadow{})
                     .build();
 
                 ui_.stack(cardId + ".image.layer")
@@ -240,7 +255,6 @@ private:
                             .cover()
                             .radius(style_.radius)
                             .transformOrigin(0.5f, 0.5f)
-                            .transition(transition_)
                             .build();
 
                         ui_.rect(cardId + ".shade")
@@ -248,8 +262,6 @@ private:
                             .gradient(style_.overlayTop, style_.overlayBottom, core::GradientDirection::Vertical)
                             .radius(style_.radius)
                             .opacity(active ? 1.0f : 0.78f)
-                            .transition(transition_)
-                            .animate(core::AnimProperty::Opacity)
                             .build();
                     })
                     .build();
@@ -262,7 +274,6 @@ private:
                     .fontSize(active ? 22.0f : 19.0f)
                     .lineHeight(24.0f)
                     .color(style_.text)
-                    .transition(transition_)
                     .build();
 
                 if (!item.subtitle.empty()) {
@@ -274,7 +285,6 @@ private:
                         .fontSize(14.0f)
                         .lineHeight(18.0f)
                         .color(style_.mutedText)
-                        .transition(transition_)
                         .build();
                 }
 
