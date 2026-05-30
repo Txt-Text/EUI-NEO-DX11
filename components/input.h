@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace components {
 
@@ -52,6 +53,7 @@ public:
     InputBuilder& placeholder(std::string value) { placeholder_ = std::move(value); return *this; }
     InputBuilder& multiline(bool value = true) { multiline_ = value; return *this; }
     InputBuilder& fontSize(float value) { fontSize_ = std::max(1.0f, value); return *this; }
+    InputBuilder& fontFamily(std::string value) { fontFamily_ = std::move(value); return *this; }
     InputBuilder& inset(float value) { inset_ = std::max(0.0f, value); return *this; }
     InputBuilder& style(const InputStyle& value) { style_ = value; return *this; }
     InputBuilder& theme(const theme::ThemeColorTokens& tokens) { style_ = InputStyle(tokens); return *this; }
@@ -88,6 +90,7 @@ public:
         const float width = width_;
         const float inset = inset_;
         const float fontSize = fontSize_;
+        const std::string fontFamily = fontFamily_;
         InputState& state = stateFor(id_);
         if (state.text != text_) {
             state.text = text_;
@@ -99,21 +102,14 @@ public:
         state.cursor = clampUtf8Boundary(state.text, state.cursor);
         state.selectionStart = clampUtf8Boundary(state.text, state.selectionStart);
         state.selectionEnd = clampUtf8Boundary(state.text, state.selectionEnd);
-        syncScroll(state, textWidth, fontSize_);
-
+        const InputLayout layout = InputLayout::build(state, textWidth, width_, inset_, fontFamily_, fontSize_);
         const bool empty = state.text.empty();
-        const float cursorX = std::clamp(inset_ + measureWidth(state.text, 0, state.cursor, fontSize_) - state.horizontalScroll,
-                                         inset_,
-                                         std::max(inset_, width_ - inset_ - 2.0f));
-        const auto selection = selectionRange(state);
-        const bool hasSelection = selection.first != selection.second;
-        const float selectionX = inset_ + measureWidth(state.text, 0, selection.first, fontSize_) - state.horizontalScroll;
-        const float selectionW = measureWidth(state.text, selection.first, selection.second, fontSize_);
-        const float visibleTextWidth = std::max(textWidth, measureWidth(state.text, 0, static_cast<int>(state.text.size()), fontSize_) + 24.0f);
+        const bool hasSelection = layout.selectionStart != layout.selectionEnd;
 
         ui_.stack(id_)
             .size(width_, height_)
             .clip()
+            .dirtyKey(makeDirtyKey(state, focused, layout))
             .content([&] {
                 ui_.rect(hitId)
                     .size(width_, height_)
@@ -123,22 +119,22 @@ public:
                     .shadow(focused ? style_.shadow : core::Shadow{})
                     .transition(transition_)
                     .focusable()
-                    .imeRect(cursorX, textY, 1.5f, textLineHeight)
-                    .onPress([&state, width, inset, fontSize](const core::PointerEvent& event, const core::Rect& bounds) {
+                    .imeRect(layout.clampedCursorX(), textY, 1.5f, textLineHeight)
+                    .onPress([&state, width, inset, layout](const core::PointerEvent& event, const core::Rect& bounds) {
                         state.lastBounds = bounds;
-                        state.cursor = cursorFromPointer(state, event.x, bounds, width, inset, fontSize);
+                        state.cursor = clampUtf8Boundary(state.text, layout.cursorFromPointer(event.x, bounds, width, inset));
                         clearSelection(state);
                         state.dragAnchor = state.cursor;
                         state.selecting = true;
                     })
                     .onFocusChanged(onFocus)
-                    .onDrag([&state, width, inset, fontSize](const core::dsl::DragEvent& event) {
-                        state.cursor = cursorFromPointer(state, event.x, state.lastBounds, width, inset, fontSize);
+                    .onDrag([&state, width, inset, fontSize, fontFamily, layout](const core::dsl::DragEvent& event) {
+                        state.cursor = clampUtf8Boundary(state.text, layout.cursorFromPointer(event.x, state.lastBounds, width, inset));
                         state.selectionStart = state.dragAnchor;
                         state.selectionEnd = state.cursor;
-                        syncScroll(state, std::max(0.0f, width - inset * 2.0f), fontSize);
+                        syncScroll(state, std::max(0.0f, width - inset * 2.0f), fontFamily, fontSize);
                     })
-                    .onTextInput([&state, allowMultiline, onChange, onEnter, width, inset, fontSize](const core::KeyboardEvent& event) {
+                    .onTextInput([&state, allowMultiline, onChange, onEnter, width, inset, fontSize, fontFamily](const core::KeyboardEvent& event) {
                         bool changed = false;
 
                         if (event.selectAll) {
@@ -155,10 +151,10 @@ public:
                             changed = true;
                         }
                         if (event.left) {
-                            moveCursor(state, -1, event.shift);
+                            moveCursor(state, -1, event.shift, fontFamily, fontSize);
                         }
                         if (event.right) {
-                            moveCursor(state, 1, event.shift);
+                            moveCursor(state, 1, event.shift, fontFamily, fontSize);
                         }
                         if (event.home) {
                             moveCursorTo(state, 0, event.shift);
@@ -171,7 +167,7 @@ public:
                                 eraseSelection(state);
                                 changed = true;
                             } else if (state.cursor < static_cast<int>(state.text.size())) {
-                                const int next = nextUtf8Index(state.text, state.cursor);
+                                const int next = nextCursorIndex(state, fontFamily, fontSize);
                                 state.text.erase(static_cast<std::size_t>(state.cursor), static_cast<std::size_t>(next - state.cursor));
                                 changed = true;
                             }
@@ -181,7 +177,7 @@ public:
                                 eraseSelection(state);
                                 changed = true;
                             } else if (state.cursor > 0) {
-                                const int previous = prevUtf8Index(state.text, state.cursor);
+                                const int previous = prevCursorIndex(state, fontFamily, fontSize);
                                 state.text.erase(static_cast<std::size_t>(previous), static_cast<std::size_t>(state.cursor - previous));
                                 state.cursor = previous;
                                 clearSelection(state);
@@ -207,7 +203,7 @@ public:
                         if (event.escape && onEnter) {
                             onEnter();
                         }
-                        syncScroll(state, std::max(0.0f, width - inset * 2.0f), fontSize);
+                        syncScroll(state, std::max(0.0f, width - inset * 2.0f), fontFamily, fontSize);
                         if (changed && onChange) {
                             onChange(state.text);
                         }
@@ -216,8 +212,8 @@ public:
 
                 if (hasSelection) {
                     ui_.rect(id_ + ".selection")
-                        .position(std::max(inset_, selectionX), lineY)
-                        .size(std::max(1.0f, std::min(selectionW, width_ - inset_ - std::max(inset_, selectionX))), textLineHeight)
+                        .position(layout.clippedSelectionX, lineY)
+                        .size(layout.clippedSelectionWidth, textLineHeight)
                         .color(theme::withAlpha(style_.cursor, 0.24f))
                         .radius(3.0f)
                         .build();
@@ -225,9 +221,10 @@ public:
 
                 ui_.text(id_ + ".text")
                     .position(inset_ - state.horizontalScroll, textY)
-                    .size(visibleTextWidth, textHeight)
+                    .size(layout.visibleTextWidth, textHeight)
                     .text(empty ? placeholder_ : state.text)
                     .fontSize(fontSize_)
+                    .fontFamily(fontFamily_)
                     .lineHeight(textLineHeight)
                     .color(empty ? style_.placeholder : style_.text)
                     .wrap(multiline_)
@@ -236,7 +233,7 @@ public:
 
                 if (focused) {
                     ui_.rect(id_ + ".cursor")
-                        .position(cursorX, std::max(0.0f, (height_ - fontSize_ * 1.18f) * 0.5f))
+                        .position(layout.clampedCursorX(), std::max(0.0f, (height_ - fontSize_ * 1.18f) * 0.5f))
                         .size(1.5f, fontSize_ * 1.18f)
                         .color(style_.cursor)
                         .radius(1.0f)
@@ -258,6 +255,86 @@ private:
         core::Rect lastBounds;
     };
 
+    struct InputLayout {
+        core::TextPrimitive::TextMetrics metrics;
+        float viewportWidth = 0.0f;
+        float controlWidth = 0.0f;
+        float inset = 0.0f;
+        float scroll = 0.0f;
+        float textWidth = 0.0f;
+        float cursorPixel = 0.0f;
+        float cursorX = 0.0f;
+        float visibleTextWidth = 0.0f;
+        int selectionStart = 0;
+        int selectionEnd = 0;
+        float clippedSelectionX = 0.0f;
+        float clippedSelectionWidth = 0.0f;
+
+        static InputLayout build(InputState& state,
+                                 float viewportWidth,
+                                 float controlWidth,
+                                 float inset,
+                                 const std::string& fontFamily,
+                                 float fontSize) {
+            InputLayout layout;
+            layout.metrics = measureMetrics(state.text, fontFamily, fontSize);
+            syncScroll(state, viewportWidth, layout.metrics, fontSize);
+            layout.viewportWidth = viewportWidth;
+            layout.controlWidth = controlWidth;
+            layout.inset = inset;
+            layout.scroll = state.horizontalScroll;
+            layout.textWidth = layout.metrics.width;
+            layout.cursorPixel = caretX(layout.metrics, state.cursor);
+            layout.cursorX = inset + layout.cursorPixel - layout.scroll;
+            layout.visibleTextWidth = std::max(viewportWidth, layout.textWidth + 24.0f);
+
+            const auto selection = selectionRange(state);
+            layout.selectionStart = selection.first;
+            layout.selectionEnd = selection.second;
+            const float selectionStartX = layout.xFor(selection.first);
+            const float selectionEndX = layout.xFor(selection.second);
+            const float rawX = inset + selectionStartX - layout.scroll;
+            const float rawRight = inset + selectionEndX - layout.scroll;
+            const float clipLeft = inset;
+            const float clipRight = std::max(inset, controlWidth - inset);
+            layout.clippedSelectionX = std::clamp(rawX, clipLeft, clipRight);
+            const float clippedRight = std::clamp(rawRight, clipLeft, clipRight);
+            layout.clippedSelectionWidth = std::max(1.0f, clippedRight - layout.clippedSelectionX);
+            return layout;
+        }
+
+        float xFor(int byteIndex) const {
+            return caretX(metrics, byteIndex);
+        }
+
+        float clampedCursorX() const {
+            return std::clamp(cursorX, inset, std::max(inset, controlWidth - inset));
+        }
+
+        int cursorFromPointer(double pointerX, const core::Rect& bounds, float width, float inputInset) const {
+            const float scale = width > 0.0f ? bounds.width / width : 1.0f;
+            const float localX = static_cast<float>((pointerX - bounds.x) / std::max(0.001f, scale));
+            return closestCaret(localX - inputInset + scroll);
+        }
+
+        int closestCaret(float targetX) const {
+            if (metrics.byteIndices.empty() || metrics.caretX.empty()) {
+                return 0;
+            }
+            const size_t count = std::min(metrics.byteIndices.size(), metrics.caretX.size());
+            int bestIndex = metrics.byteIndices.front();
+            float bestDistance = std::fabs(targetX - metrics.caretX.front());
+            for (size_t i = 1; i < count; ++i) {
+                const float distance = std::fabs(targetX - metrics.caretX[i]);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestIndex = metrics.byteIndices[i];
+                }
+            }
+            return bestIndex;
+        }
+    };
+
     static InputState& stateFor(const std::string& id) {
         static std::unordered_map<std::string, InputState> states;
         return states[id];
@@ -272,30 +349,6 @@ private:
             output.push_back(ch);
         }
         return output;
-    }
-
-    static int prevUtf8Index(const std::string& value, int index) {
-        int out = std::clamp(index, 0, static_cast<int>(value.size()));
-        if (out <= 0) {
-            return 0;
-        }
-        --out;
-        while (out > 0 && (static_cast<unsigned char>(value[static_cast<std::size_t>(out)]) & 0xC0) == 0x80) {
-            --out;
-        }
-        return out;
-    }
-
-    static int nextUtf8Index(const std::string& value, int index) {
-        int out = std::clamp(index, 0, static_cast<int>(value.size()));
-        if (out >= static_cast<int>(value.size())) {
-            return static_cast<int>(value.size());
-        }
-        ++out;
-        while (out < static_cast<int>(value.size()) && (static_cast<unsigned char>(value[static_cast<std::size_t>(out)]) & 0xC0) == 0x80) {
-            ++out;
-        }
-        return out;
     }
 
     static int clampUtf8Boundary(const std::string& value, int index) {
@@ -343,7 +396,7 @@ private:
         clearSelection(state);
     }
 
-    static void moveCursor(InputState& state, int direction, bool keepSelection) {
+    static void moveCursor(InputState& state, int direction, bool keepSelection, const std::string& fontFamily, float fontSize) {
         const int previous = state.cursor;
         if (!keepSelection && hasTextSelection(state)) {
             const auto range = selectionRange(state);
@@ -351,7 +404,7 @@ private:
             clearSelection(state);
             return;
         }
-        state.cursor = direction < 0 ? prevUtf8Index(state.text, state.cursor) : nextUtf8Index(state.text, state.cursor);
+        state.cursor = direction < 0 ? prevCursorIndex(state, fontFamily, fontSize) : nextCursorIndex(state, fontFamily, fontSize);
         if (keepSelection) {
             if (!hasTextSelection(state)) {
                 state.selectionStart = previous;
@@ -386,51 +439,88 @@ private:
         }
     }
 
-    static float measureWidth(const std::string& value, int start, int end, float fontSize) {
-        const int clampedStart = std::clamp(start, 0, static_cast<int>(value.size()));
-        const int clampedEnd = std::clamp(end, clampedStart, static_cast<int>(value.size()));
-        if (clampedEnd <= clampedStart) {
+    static core::TextPrimitive::TextMetrics measureMetrics(const std::string& value, const std::string& fontFamily, float fontSize) {
+        return core::TextPrimitive::measureTextMetrics(value, fontFamily, fontSize, 400);
+    }
+
+    static float caretX(const core::TextPrimitive::TextMetrics& metrics, int byteIndex) {
+        if (metrics.byteIndices.empty() || metrics.caretX.empty()) {
             return 0.0f;
         }
-        return core::TextPrimitive::measureTextWidth(
-            value.substr(static_cast<std::size_t>(clampedStart), static_cast<std::size_t>(clampedEnd - clampedStart)),
-            {},
-            fontSize,
-            400);
+        const auto it = std::lower_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
+        const size_t slot = it == metrics.byteIndices.end()
+            ? metrics.caretX.size() - 1
+            : static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
+        return metrics.caretX[std::min(slot, metrics.caretX.size() - 1)];
     }
 
-    static int cursorFromPointer(const InputState& state, double pointerX, const core::Rect& bounds, float width, float inset, float fontSize) {
-        const float scale = width > 0.0f ? bounds.width / width : 1.0f;
-        const float localX = static_cast<float>((pointerX - bounds.x) / std::max(0.001f, scale));
-        const float target = localX - inset + state.horizontalScroll;
-        float cursorX = 0.0f;
-        int index = 0;
-        while (index < static_cast<int>(state.text.size())) {
-            const int next = nextUtf8Index(state.text, index);
-            const float advance = measureWidth(state.text, index, next, fontSize);
-            if (target < cursorX + advance * 0.5f) {
-                return index;
-            }
-            cursorX += advance;
-            index = next;
+    static int previousCaretIndex(const core::TextPrimitive::TextMetrics& metrics, int byteIndex) {
+        if (metrics.byteIndices.empty()) {
+            return 0;
         }
-        return static_cast<int>(state.text.size());
+        const auto it = std::lower_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
+        if (it == metrics.byteIndices.begin()) {
+            return metrics.byteIndices.front();
+        }
+        return *(it - 1);
     }
 
-    static void syncScroll(InputState& state, float viewportWidth, float fontSize) {
-        const float textWidth = measureWidth(state.text, 0, static_cast<int>(state.text.size()), fontSize);
-        const float cursorPixel = measureWidth(state.text, 0, state.cursor, fontSize);
+    static int nextCaretIndex(const core::TextPrimitive::TextMetrics& metrics, int byteIndex) {
+        if (metrics.byteIndices.empty()) {
+            return 0;
+        }
+        const auto it = std::upper_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
+        if (it == metrics.byteIndices.end()) {
+            return metrics.byteIndices.back();
+        }
+        return *it;
+    }
+
+    static int prevCursorIndex(const InputState& state, const std::string& fontFamily, float fontSize) {
+        return clampUtf8Boundary(state.text, previousCaretIndex(measureMetrics(state.text, fontFamily, fontSize), state.cursor));
+    }
+
+    static int nextCursorIndex(const InputState& state, const std::string& fontFamily, float fontSize) {
+        return clampUtf8Boundary(state.text, nextCaretIndex(measureMetrics(state.text, fontFamily, fontSize), state.cursor));
+    }
+
+    static void syncScroll(InputState& state, float viewportWidth, const std::string& fontFamily, float fontSize) {
+        const core::TextPrimitive::TextMetrics metrics = measureMetrics(state.text, fontFamily, fontSize);
+        syncScroll(state, viewportWidth, metrics, fontSize);
+    }
+
+    static void syncScroll(InputState& state,
+                           float viewportWidth,
+                           const core::TextPrimitive::TextMetrics& metrics,
+                           float fontSize) {
+        const float textWidth = metrics.width;
+        const float cursorPixel = caretX(metrics, state.cursor);
         if (textWidth <= viewportWidth) {
             state.horizontalScroll = 0.0f;
             return;
         }
-        const float rightSafe = std::max(8.0f, viewportWidth - 10.0f);
+        const float trailingPadding = std::max(6.0f, fontSize * 0.35f);
+        const float rightSafe = std::max(1.0f, viewportWidth - trailingPadding);
         if (cursorPixel - state.horizontalScroll < 0.0f) {
             state.horizontalScroll = cursorPixel;
         } else if (cursorPixel - state.horizontalScroll > rightSafe) {
             state.horizontalScroll = cursorPixel - rightSafe;
         }
-        state.horizontalScroll = std::clamp(state.horizontalScroll, 0.0f, std::max(0.0f, textWidth - viewportWidth + 10.0f));
+        state.horizontalScroll = std::clamp(state.horizontalScroll, 0.0f, std::max(0.0f, textWidth - viewportWidth + trailingPadding));
+    }
+
+    static std::string makeDirtyKey(const InputState& state, bool focused, const InputLayout& layout) {
+        std::string key = focused ? "f|" : "b|";
+        key += std::to_string(state.cursor);
+        key += '|';
+        key += std::to_string(state.selectionStart);
+        key += '|';
+        key += std::to_string(state.selectionEnd);
+        key += '|';
+        key += std::to_string(static_cast<int>(std::lround(layout.scroll * 64.0f)));
+        key += '|';
+        key += state.text;
+        return key;
     }
 
     core::dsl::Ui& ui_;
@@ -441,12 +531,13 @@ private:
     std::function<void()> onEnter_;
     std::function<void(bool)> onFocus_;
     std::string text_;
-    std::string placeholder_ = "Input";
+    std::string placeholder_ = "Hello EUI-NEO 😉";
     bool multiline_ = false;
     float width_ = 260.0f;
     float height_ = 40.0f;
     float inset_ = 12.0f;
     float fontSize_ = 17.0f;
+    std::string fontFamily_ = "monospace";
 };
 
 inline InputBuilder input(core::dsl::Ui& ui, const std::string& id) {

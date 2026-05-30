@@ -3,7 +3,9 @@
 #include "core/primitive.h"
 
 #include <memory>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -46,7 +48,23 @@ public:
         float v0 = 0.0f;
         float u1 = 0.0f;
         float v1 = 0.0f;
-        bool useSdf = true;
+        bool colored = false;
+    };
+
+    struct ShapedGlyph {
+        std::uint64_t key = 0;
+        unsigned int codepoint = 0;
+        int byteStart = 0;
+        int byteEnd = 0;
+        float advance = 0.0f;
+        float xOffset = 0.0f;
+        float yOffset = 0.0f;
+    };
+
+    struct TextMetrics {
+        float width = 0.0f;
+        std::vector<int> byteIndices;
+        std::vector<float> caretX;
     };
 
     TextPrimitive() = default;
@@ -77,6 +95,10 @@ public:
                                   const std::string& fontFamily = {},
                                   float fontSize = 16.0f,
                                   int fontWeight = 400);
+    static TextMetrics measureTextMetrics(const std::string& text,
+                                          const std::string& fontFamily = {},
+                                          float fontSize = 16.0f,
+                                          int fontWeight = 400);
     static void setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile);
 
     void render(int windowWidth, int windowHeight);
@@ -94,16 +116,15 @@ private:
     };
 
     bool loadFont();
-    bool ensureGlyph(unsigned int codepoint);
-    Glyph* findGlyph(unsigned int codepoint);
-    void cacheGlyph(unsigned int codepoint, const Glyph& glyph);
+    bool ensureGlyph(const ShapedGlyph& shaped);
+    Glyph* findGlyph(std::uint64_t key);
+    void cacheGlyph(std::uint64_t key, const Glyph& glyph);
     void invalidateLayout();
     void invalidateVertices();
     void rebuildLayout();
     void rebuildVertices();
-    std::vector<unsigned int> decodeUtf8(const std::string& text) const;
-    float glyphAdvance(unsigned int codepoint);
-    void appendCodepointToLine(Line& line, unsigned int codepoint, float& cursorX);
+    std::vector<ShapedGlyph> shapeText(const std::string& text);
+    void appendShapedGlyphToLine(Line& line, const ShapedGlyph& shaped, float& cursorX);
 
     static unsigned int readCodepoint(const std::string& text, size_t& index);
     static std::string resolveFontPath(const std::string& fontFamily, int fontWeight);
@@ -115,14 +136,13 @@ private:
     Transform transform_;
     Rect transformFrame_;
     TextStyle style_;
-    std::shared_ptr<std::vector<unsigned char>> fontData_;
     std::shared_ptr<void> fontInfoStorage_;
     float scale_ = 1.0f;
     float ascent_ = 0.0f;
     float descent_ = 0.0f;
     float lineGap_ = 0.0f;
 
-    std::vector<std::pair<unsigned int, Glyph>> glyphs_;
+    std::unordered_map<std::uint64_t, Glyph> glyphs_;
 
     std::vector<Line> lines_;
     std::vector<float> vertices_;

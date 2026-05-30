@@ -16,13 +16,18 @@
 #endif
 #include <GLFW/glfw3.h>
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "3rd/stb_truetype.h"
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+#if defined(EUI_HAS_HARFBUZZ)
+#include <hb.h>
+#include <hb-ft.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -33,22 +38,52 @@ namespace core {
 
 namespace {
 
-constexpr int SdfPadding = 12;
-constexpr float SdfOversample = 2.0f;
-constexpr int SdfOnEdgeValue = 128;
-constexpr float SdfPixelDistanceScale = 48.0f;
 constexpr const char* kDefaultUiFontFile = "JingNanJunJunTi-JinNanJunJunTi-Bold-2.ttf";
 constexpr const char* kDefaultIconFontFile = "Font Awesome 7 Free-Solid-900.otf";
+constexpr int kGrayAtlasSize = 2048;
+constexpr int kColorAtlasSize = 1024;
+constexpr FT_Int32 kGlyphLoadFlags = FT_LOAD_DEFAULT | FT_LOAD_COLOR | FT_LOAD_NO_SVG | FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT;
 
 struct FontFace {
     std::string path;
-    std::shared_ptr<std::vector<unsigned char>> data;
-    stbtt_fontinfo info;
-    float scale = 1.0f;
+    FT_Face face = nullptr;
+    float size = 16.0f;
     float ascent = 0.0f;
     float descent = 0.0f;
     float lineGap = 0.0f;
-    bool useSdf = true;
+    bool colored = false;
+
+    FontFace() = default;
+    FontFace(const FontFace&) = delete;
+    FontFace& operator=(const FontFace&) = delete;
+
+    FontFace(FontFace&& other) noexcept {
+        *this = std::move(other);
+    }
+
+    FontFace& operator=(FontFace&& other) noexcept {
+        if (this == &other) {
+            return *this;
+        }
+        if (face) {
+            FT_Done_Face(face);
+        }
+        path = std::move(other.path);
+        face = other.face;
+        size = other.size;
+        ascent = other.ascent;
+        descent = other.descent;
+        lineGap = other.lineGap;
+        colored = other.colored;
+        other.face = nullptr;
+        return *this;
+    }
+
+    ~FontFace() {
+        if (face) {
+            FT_Done_Face(face);
+        }
+    }
 };
 
 struct FontInfoHolder {
@@ -56,15 +91,21 @@ struct FontInfoHolder {
     std::vector<std::string> lazyFallbackPaths;
 };
 
-struct SharedTextAtlas {
+struct AtlasPage {
     GLuint texture = 0;
-    int width = 2048;
-    int height = 2048;
+    int width = 0;
+    int height = 0;
+    int channels = 1;
     int x = 1;
     int y = 1;
     int rowHeight = 0;
-    int references = 0;
     std::unordered_map<std::string, TextPrimitive::Glyph> glyphs;
+};
+
+struct SharedTextAtlas {
+    AtlasPage gray;
+    AtlasPage color;
+    int references = 0;
 };
 
 struct SharedTextRenderResources {
@@ -73,9 +114,34 @@ struct SharedTextRenderResources {
     GLuint shaderProgram = 0;
     GLint windowSizeLocation = -1;
     GLint colorLocation = -1;
-    GLint textureLocation = -1;
+    GLint grayTextureLocation = -1;
+    GLint colorTextureLocation = -1;
     int references = 0;
 };
+
+struct CodepointInfo {
+    unsigned int codepoint = 0;
+    size_t byteOffset = 0;
+    size_t byteLength = 0;
+};
+
+struct TextRun {
+    size_t faceIndex = 0;
+    size_t sourceOffset = 0;
+    std::string text;
+    std::vector<CodepointInfo> codepoints;
+    bool rtl = false;
+};
+
+unsigned int readUtf8Codepoint(const std::string& text, size_t& index);
+
+FT_Library sharedFreeTypeLibrary() {
+    static FT_Library library = [] {
+        FT_Library created = nullptr;
+        return FT_Init_FreeType(&created) == 0 ? created : nullptr;
+    }();
+    return library;
+}
 
 SharedTextAtlas& sharedTextAtlas() {
     static SharedTextAtlas atlas;
@@ -107,13 +173,13 @@ bool createSharedTextRenderResources(SharedTextRenderResources& resources) {
         "#version 330 core\n"
         "layout(location = 0) in vec2 aPos;\n"
         "layout(location = 1) in vec2 aUv;\n"
-        "layout(location = 2) in float aUseSdf;\n"
+        "layout(location = 2) in float aColored;\n"
         "uniform vec2 uWindowSize;\n"
         "out vec2 vUv;\n"
-        "out float vUseSdf;\n"
+        "out float vColored;\n"
         "void main() {\n"
         "    vUv = aUv;\n"
-        "    vUseSdf = aUseSdf;\n"
+        "    vColored = aColored;\n"
         "    vec2 ndc = vec2((aPos.x / uWindowSize.x) * 2.0 - 1.0,\n"
         "                    1.0 - (aPos.y / uWindowSize.y) * 2.0);\n"
         "    gl_Position = vec4(ndc, 0.0, 1.0);\n"
@@ -122,16 +188,21 @@ bool createSharedTextRenderResources(SharedTextRenderResources& resources) {
     const char* fragmentSource =
         "#version 330 core\n"
         "in vec2 vUv;\n"
-        "in float vUseSdf;\n"
+        "in float vColored;\n"
         "out vec4 FragColor;\n"
-        "uniform sampler2D uAtlas;\n"
+        "uniform sampler2D uGrayAtlas;\n"
+        "uniform sampler2D uColorAtlas;\n"
         "uniform vec4 uColor;\n"
         "void main() {\n"
-        "    float sdf = texture(uAtlas, vUv).r;\n"
-        "    float width = max(fwidth(sdf) * 0.7, 0.001);\n"
-        "    float alpha = vUseSdf > 0.5 ? smoothstep(0.5 - width, 0.5 + width, sdf) : sdf;\n"
-        "    if (alpha <= 0.0) discard;\n"
-        "    FragColor = vec4(uColor.rgb, uColor.a * alpha);\n"
+        "    if (vColored > 0.5) {\n"
+        "        vec4 sampleColor = texture(uColorAtlas, vUv);\n"
+        "        if (sampleColor.a <= 0.0) discard;\n"
+        "        FragColor = sampleColor * uColor.a;\n"
+        "    } else {\n"
+        "        float alpha = texture(uGrayAtlas, vUv).r;\n"
+        "        if (alpha <= 0.0) discard;\n"
+        "        FragColor = vec4(uColor.rgb, uColor.a * alpha);\n"
+        "    }\n"
         "}\n";
 
     GLuint vertexShader = compileGlShader(GL_VERTEX_SHADER, vertexSource);
@@ -163,7 +234,8 @@ bool createSharedTextRenderResources(SharedTextRenderResources& resources) {
 
     resources.windowSizeLocation = glGetUniformLocation(resources.shaderProgram, "uWindowSize");
     resources.colorLocation = glGetUniformLocation(resources.shaderProgram, "uColor");
-    resources.textureLocation = glGetUniformLocation(resources.shaderProgram, "uAtlas");
+    resources.grayTextureLocation = glGetUniformLocation(resources.shaderProgram, "uGrayAtlas");
+    resources.colorTextureLocation = glGetUniformLocation(resources.shaderProgram, "uColorAtlas");
 
     glGenVertexArrays(1, &resources.vao);
     glGenBuffers(1, &resources.vbo);
@@ -218,49 +290,83 @@ void releaseSharedTextRenderResources() {
     }
     resources.windowSizeLocation = -1;
     resources.colorLocation = -1;
-    resources.textureLocation = -1;
+    resources.grayTextureLocation = -1;
+    resources.colorTextureLocation = -1;
 }
 
-bool retainSharedTextAtlas() {
-    SharedTextAtlas& atlas = sharedTextAtlas();
-    ++atlas.references;
-    if (atlas.texture != 0) {
+bool ensureAtlasPage(AtlasPage& page, int width, int height, int channels) {
+    if (page.texture != 0) {
         return true;
     }
 
-    glGenTextures(1, &atlas.texture);
-    glBindTexture(GL_TEXTURE_2D, atlas.texture);
+    page.width = width;
+    page.height = height;
+    page.channels = channels;
+    page.x = 1;
+    page.y = 1;
+    page.rowHeight = 0;
+
+    glGenTextures(1, &page.texture);
+    glBindTexture(GL_TEXTURE_2D, page.texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlas.width, atlas.height, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    if (channels == 4) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, page.width, page.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    } else {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, page.width, page.height, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+    }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
-    return atlas.texture != 0;
+    return page.texture != 0;
+}
+
+bool retainSharedTextAtlas() {
+    SharedTextAtlas& atlas = sharedTextAtlas();
+    ++atlas.references;
+    if (ensureAtlasPage(atlas.gray, kGrayAtlasSize, kGrayAtlasSize, 1)) {
+        return true;
+    }
+    atlas.references = std::max(0, atlas.references - 1);
+    return false;
+}
+
+void releaseAtlasPage(AtlasPage& page) {
+    if (page.texture) {
+        glDeleteTextures(1, &page.texture);
+    }
+    page = {};
 }
 
 void releaseSharedTextAtlas() {
     SharedTextAtlas& atlas = sharedTextAtlas();
     atlas.references = std::max(0, atlas.references - 1);
-    if (atlas.references > 0 || atlas.texture == 0) {
+    if (atlas.references > 0) {
         return;
     }
 
-    glDeleteTextures(1, &atlas.texture);
-    atlas.texture = 0;
-    atlas.x = 1;
-    atlas.y = 1;
-    atlas.rowHeight = 0;
-    atlas.glyphs.clear();
+    releaseAtlasPage(atlas.gray);
+    releaseAtlasPage(atlas.color);
 }
 
-std::string glyphCacheKey(const FontFace& face, float fontSize, unsigned int codepoint) {
-    const int sdfConfig = face.useSdf ? static_cast<int>(std::round(SdfOversample * 100.0f)) : 0;
+std::uint64_t makeGlyphKey(size_t faceIndex, unsigned int glyphIndex) {
+    return ((static_cast<std::uint64_t>(faceIndex) + 1ULL) << 32) | static_cast<std::uint64_t>(glyphIndex);
+}
+
+size_t faceIndexFromGlyphKey(std::uint64_t key) {
+    return static_cast<size_t>((key >> 32) - 1ULL);
+}
+
+unsigned int glyphIndexFromGlyphKey(std::uint64_t key) {
+    return static_cast<unsigned int>(key & 0xffffffffULL);
+}
+
+std::string glyphCacheKey(const FontFace& face, float fontSize, unsigned int glyphIndex, bool colored) {
     return face.path + "#" +
            std::to_string(static_cast<int>(std::round(fontSize * 64.0f))) + "#" +
-           (face.useSdf ? "sdf" : "bitmap") + std::to_string(sdfConfig) + "#" +
-           std::to_string(codepoint);
+           (colored ? "color#" : "gray#") +
+           std::to_string(glyphIndex);
 }
 
 std::string existingPath(const std::filesystem::path& path) {
@@ -357,55 +463,59 @@ std::string resolveFontFilePath(const std::string& path) {
     return path;
 }
 
-bool isFontAwesomePath(const std::string& path) {
-    return std::filesystem::path(path).filename().string().find("Font Awesome") != std::string::npos;
+bool isEmojiFontPath(const std::string& path) {
+    const std::string filename = std::filesystem::path(path).filename().string();
+    return filename.find("Emoji") != std::string::npos ||
+           filename.find("emoji") != std::string::npos ||
+           filename.find("seguiemj") != std::string::npos;
 }
 
-std::shared_ptr<std::vector<unsigned char>> loadSharedFontData(const std::string& fontPath) {
-    static std::unordered_map<std::string, std::weak_ptr<std::vector<unsigned char>>> cache;
-
-    if (auto cached = cache[fontPath].lock()) {
-        return cached;
+bool loadFontFace(const std::string& path, float fontSize, FontFace& face) {
+    FT_Library library = sharedFreeTypeLibrary();
+    if (!library) {
+        return false;
     }
 
-    std::ifstream file(fontPath, std::ios::binary);
-    if (!file) {
-        return {};
+    FT_Face loadedFace = nullptr;
+    if (FT_New_Face(library, path.c_str(), 0, &loadedFace) != 0 || !loadedFace) {
+        return false;
     }
 
-    auto data = std::make_shared<std::vector<unsigned char>>(
-        std::istreambuf_iterator<char>(file),
-        std::istreambuf_iterator<char>());
-
-    if (data->empty()) {
-        return {};
+    float pixelHeightScale = 1.0f;
+    if (loadedFace->units_per_EM > 0 && loadedFace->ascender != loadedFace->descender) {
+        const float designHeight = static_cast<float>(loadedFace->ascender - loadedFace->descender);
+        pixelHeightScale = static_cast<float>(loadedFace->units_per_EM) / designHeight;
+    }
+    const float scaledFontSize = std::max(1.0f, fontSize * pixelHeightScale);
+    FT_Error sizeError = FT_Set_Char_Size(
+        loadedFace,
+        0,
+        static_cast<FT_F26Dot6>(std::lround(scaledFontSize * 64.0f)),
+        72,
+        72);
+    if (sizeError != 0) {
+        const FT_UInt pixelSize = static_cast<FT_UInt>(std::max(1.0f, std::round(scaledFontSize)));
+        sizeError = FT_Set_Pixel_Sizes(loadedFace, 0, pixelSize);
+    }
+    if (sizeError != 0) {
+        FT_Done_Face(loadedFace);
+        return false;
     }
 
-    cache[fontPath] = data;
-    return data;
-}
-
-bool loadFontFace(const std::string& path, float fontSize, bool useSdf, FontFace& face) {
     face.path = path;
-    face.useSdf = useSdf;
-    face.data = loadSharedFontData(path);
-    if (!face.data || face.data->empty()) {
-        return false;
+    face.face = loadedFace;
+    face.size = fontSize;
+    face.colored = isEmojiFontPath(path);
+    if (loadedFace->size && loadedFace->size->metrics.y_ppem > 0) {
+        face.ascent = static_cast<float>(loadedFace->size->metrics.ascender) / 64.0f;
+        face.descent = static_cast<float>(loadedFace->size->metrics.descender) / 64.0f;
+        const float height = static_cast<float>(loadedFace->size->metrics.height) / 64.0f;
+        face.lineGap = height - (face.ascent - face.descent);
+    } else {
+        face.ascent = fontSize * 0.8f;
+        face.descent = -fontSize * 0.2f;
+        face.lineGap = 0.0f;
     }
-
-    const int offset = stbtt_GetFontOffsetForIndex(face.data->data(), 0);
-    if (!stbtt_InitFont(&face.info, face.data->data(), offset)) {
-        return false;
-    }
-
-    face.scale = stbtt_ScaleForPixelHeight(&face.info, fontSize);
-    int ascent = 0;
-    int descent = 0;
-    int lineGap = 0;
-    stbtt_GetFontVMetrics(&face.info, &ascent, &descent, &lineGap);
-    face.ascent = static_cast<float>(ascent) * face.scale;
-    face.descent = static_cast<float>(descent) * face.scale;
-    face.lineGap = static_cast<float>(lineGap) * face.scale;
     return true;
 }
 
@@ -424,10 +534,9 @@ std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath,
     auto holder = std::make_shared<FontInfoHolder>();
 
     FontFace primary;
-    if (!loadFontFace(fontPath, fontSize, !isFontAwesomePath(fontPath), primary)) {
+    if (!loadFontFace(fontPath, fontSize, primary)) {
         return {};
     }
-
     holder->faces.push_back(std::move(primary));
 
     const std::string assetFallbackPaths[] = {
@@ -441,19 +550,477 @@ std::shared_ptr<FontInfoHolder> loadSharedFontStack(const std::string& fontPath,
         }
 
         FontFace fallback;
-        if (loadFontFace(fallbackPath, fontSize, !isFontAwesomePath(fallbackPath), fallback)) {
+        if (loadFontFace(fallbackPath, fontSize, fallback)) {
             holder->faces.push_back(std::move(fallback));
         }
     }
 
 #ifdef _WIN32
+    holder->lazyFallbackPaths.push_back("C:/Windows/Fonts/seguiemj.ttf");
+    holder->lazyFallbackPaths.push_back("C:/Windows/Fonts/seguisym.ttf");
     holder->lazyFallbackPaths.push_back("C:/Windows/Fonts/msyh.ttc");
+    holder->lazyFallbackPaths.push_back("C:/Windows/Fonts/simhei.ttf");
 #else
+    holder->lazyFallbackPaths.push_back("/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf");
+    holder->lazyFallbackPaths.push_back("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc");
     holder->lazyFallbackPaths.push_back("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
 #endif
 
     cache[cacheKey] = holder;
     return holder;
+}
+
+bool isCombiningMark(unsigned int codepoint) {
+    return (codepoint >= 0x0300 && codepoint <= 0x036F) ||
+           (codepoint >= 0x1AB0 && codepoint <= 0x1AFF) ||
+           (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) ||
+           (codepoint >= 0x20D0 && codepoint <= 0x20FF) ||
+           (codepoint >= 0xFE20 && codepoint <= 0xFE2F);
+}
+
+bool isRtlCodepoint(unsigned int codepoint) {
+    return (codepoint >= 0x0590 && codepoint <= 0x08FF) ||
+           (codepoint >= 0xFB1D && codepoint <= 0xFDFF) ||
+           (codepoint >= 0xFE70 && codepoint <= 0xFEFF);
+}
+
+bool isVariationSelector(unsigned int codepoint) {
+    return (codepoint >= 0xFE00 && codepoint <= 0xFE0F) ||
+           (codepoint >= 0xE0100 && codepoint <= 0xE01EF);
+}
+
+bool isEmojiJoiner(unsigned int codepoint) {
+    return codepoint == 0x200D ||
+           codepoint == 0x20E3 ||
+           isVariationSelector(codepoint);
+}
+
+bool isEmojiCodepoint(unsigned int codepoint) {
+    return (codepoint >= 0x1F000 && codepoint <= 0x1FAFF) ||
+           (codepoint >= 0x2600 && codepoint <= 0x27BF);
+}
+
+bool nextCodepointIsEmojiPresentation(const std::string& text, size_t index) {
+    if (index >= text.size()) {
+        return false;
+    }
+    const size_t saved = index;
+    const unsigned int next = readUtf8Codepoint(text, index);
+    (void)saved;
+    return next == 0xFE0F;
+}
+
+size_t utf8LengthFromFirstByte(unsigned char first) {
+    if (first < 0x80) {
+        return 1;
+    }
+    if ((first >> 5) == 0x6) {
+        return 2;
+    }
+    if ((first >> 4) == 0xE) {
+        return 3;
+    }
+    if ((first >> 3) == 0x1E) {
+        return 4;
+    }
+    return 1;
+}
+
+unsigned int readUtf8Codepoint(const std::string& text, size_t& index) {
+    const unsigned char first = static_cast<unsigned char>(text[index++]);
+    if (first < 0x80) {
+        return first;
+    }
+    if ((first >> 5) == 0x6 && index < text.size()) {
+        return ((first & 0x1F) << 6) | (static_cast<unsigned char>(text[index++]) & 0x3F);
+    }
+    if ((first >> 4) == 0xE && index + 1 < text.size()) {
+        unsigned int cp = (first & 0x0F) << 12;
+        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 6;
+        cp |= static_cast<unsigned char>(text[index++]) & 0x3F;
+        return cp;
+    }
+    if ((first >> 3) == 0x1E && index + 2 < text.size()) {
+        unsigned int cp = (first & 0x07) << 18;
+        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 12;
+        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 6;
+        cp |= static_cast<unsigned char>(text[index++]) & 0x3F;
+        return cp;
+    }
+    return '?';
+}
+
+size_t findFaceForCodepoint(FontInfoHolder& holder, unsigned int codepoint, float fontSize) {
+    if (holder.faces.empty()) {
+        return 0;
+    }
+    if (codepoint == ' ' || codepoint == '\t' || codepoint == 0) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < holder.faces.size(); ++i) {
+        if (FT_Get_Char_Index(holder.faces[i].face, codepoint) != 0) {
+            return i;
+        }
+    }
+
+    for (const std::string& fallbackPath : holder.lazyFallbackPaths) {
+        if (fallbackPath.empty()) {
+            continue;
+        }
+
+        const bool alreadyLoaded = std::any_of(holder.faces.begin(), holder.faces.end(),
+                                               [&](const FontFace& loadedFace) {
+                                                   return loadedFace.path == fallbackPath;
+                                               });
+        if (alreadyLoaded) {
+            continue;
+        }
+
+        FontFace fallback;
+        if (!loadFontFace(fallbackPath, fontSize, fallback)) {
+            continue;
+        }
+
+        const bool hasGlyph = FT_Get_Char_Index(fallback.face, codepoint) != 0;
+        holder.faces.push_back(std::move(fallback));
+        if (hasGlyph) {
+            return holder.faces.size() - 1;
+        }
+    }
+
+    return 0;
+}
+
+size_t findEmojiFaceForCodepoint(FontInfoHolder& holder, unsigned int codepoint, float fontSize) {
+    for (size_t i = 0; i < holder.faces.size(); ++i) {
+        if (holder.faces[i].colored && FT_Get_Char_Index(holder.faces[i].face, codepoint) != 0) {
+            return i;
+        }
+    }
+
+    for (const std::string& fallbackPath : holder.lazyFallbackPaths) {
+        if (fallbackPath.empty() || !isEmojiFontPath(fallbackPath)) {
+            continue;
+        }
+
+        const auto loaded = std::find_if(holder.faces.begin(), holder.faces.end(),
+                                         [&](const FontFace& loadedFace) {
+                                             return loadedFace.path == fallbackPath;
+                                         });
+        if (loaded != holder.faces.end()) {
+            if (FT_Get_Char_Index(loaded->face, codepoint) != 0) {
+                return static_cast<size_t>(std::distance(holder.faces.begin(), loaded));
+            }
+            continue;
+        }
+
+        FontFace fallback;
+        if (!loadFontFace(fallbackPath, fontSize, fallback)) {
+            continue;
+        }
+
+        const bool hasGlyph = FT_Get_Char_Index(fallback.face, codepoint) != 0;
+        holder.faces.push_back(std::move(fallback));
+        if (hasGlyph) {
+            return holder.faces.size() - 1;
+        }
+    }
+
+    return findFaceForCodepoint(holder, codepoint, fontSize);
+}
+
+unsigned int codepointForCluster(const TextRun& run, unsigned int cluster) {
+    if (run.codepoints.empty()) {
+        return 0;
+    }
+
+    const CodepointInfo* chosen = &run.codepoints.front();
+    for (const CodepointInfo& info : run.codepoints) {
+        if (info.byteOffset <= cluster) {
+            chosen = &info;
+        } else {
+            break;
+        }
+    }
+    return chosen->codepoint;
+}
+
+CodepointInfo codepointInfoForCluster(const TextRun& run, unsigned int cluster) {
+    if (run.codepoints.empty()) {
+        return {};
+    }
+
+    const CodepointInfo* chosen = &run.codepoints.front();
+    for (const CodepointInfo& info : run.codepoints) {
+        if (info.byteOffset <= cluster) {
+            chosen = &info;
+        } else {
+            break;
+        }
+    }
+    return *chosen;
+}
+
+float loadGlyphAdvance(const FontFace& face, unsigned int glyphIndex, unsigned int codepoint, float fontSize) {
+    if (codepoint == '\t') {
+        return fontSize * 4.0f;
+    }
+    if (isCombiningMark(codepoint)) {
+        return 0.0f;
+    }
+    if (FT_Load_Glyph(face.face, glyphIndex, kGlyphLoadFlags) != 0) {
+        return fontSize * 0.5f;
+    }
+
+    return static_cast<float>(face.face->glyph->advance.x) / 64.0f;
+}
+
+std::vector<TextPrimitive::ShapedGlyph> shapeWithFallback(FontInfoHolder& holder,
+                                                          const std::string& text,
+                                                          float fontSize) {
+    std::vector<TextPrimitive::ShapedGlyph> shaped;
+    size_t index = 0;
+    while (index < text.size()) {
+        const size_t start = index;
+        const unsigned int codepoint = readUtf8Codepoint(text, index);
+        const bool preferEmoji = isEmojiCodepoint(codepoint) || nextCodepointIsEmojiPresentation(text, index);
+        const size_t faceIndex = preferEmoji
+            ? findEmojiFaceForCodepoint(holder, codepoint, fontSize)
+            : findFaceForCodepoint(holder, codepoint, fontSize);
+        const FontFace& face = holder.faces[faceIndex];
+        const unsigned int glyphIndex = codepoint == '\t' ? 0 : FT_Get_Char_Index(face.face, codepoint);
+        const float advance = loadGlyphAdvance(face, glyphIndex, codepoint, fontSize);
+        shaped.push_back({glyphIndex == 0 && codepoint == '\t' ? 0 : makeGlyphKey(faceIndex, glyphIndex),
+                          codepoint,
+                          static_cast<int>(start),
+                          static_cast<int>(index),
+                          advance,
+                          0.0f,
+                          0.0f});
+    }
+    return shaped;
+}
+
+#if defined(EUI_HAS_HARFBUZZ)
+std::vector<TextPrimitive::ShapedGlyph> shapeWithHarfBuzz(FontInfoHolder& holder,
+                                                          const std::string& text,
+                                                          float fontSize) {
+    std::vector<TextRun> runs;
+    size_t index = 0;
+    size_t currentRun = static_cast<size_t>(-1);
+
+    while (index < text.size()) {
+        const size_t start = index;
+        const unsigned char first = static_cast<unsigned char>(text[start]);
+        const size_t byteLength = std::min(utf8LengthFromFirstByte(first), text.size() - start);
+        const unsigned int codepoint = readUtf8Codepoint(text, index);
+        const bool preferEmoji = isEmojiCodepoint(codepoint) || nextCodepointIsEmojiPresentation(text, index);
+        const size_t faceIndex = (isEmojiJoiner(codepoint) && currentRun != static_cast<size_t>(-1))
+            ? runs[currentRun].faceIndex
+            : (preferEmoji
+                ? findEmojiFaceForCodepoint(holder, codepoint, fontSize)
+                : findFaceForCodepoint(holder, codepoint, fontSize));
+        const bool rtl = isRtlCodepoint(codepoint);
+
+        if (currentRun == static_cast<size_t>(-1) || runs[currentRun].faceIndex != faceIndex) {
+            runs.push_back({faceIndex, start, {}, {}, false});
+            currentRun = runs.size() - 1;
+        }
+
+        TextRun& run = runs[currentRun];
+        run.rtl = run.rtl || rtl;
+        const size_t runOffset = run.text.size();
+        run.text.append(text.data() + start, byteLength);
+        run.codepoints.push_back({codepoint, runOffset, byteLength});
+    }
+
+    std::vector<TextPrimitive::ShapedGlyph> shaped;
+    for (const TextRun& run : runs) {
+        if (run.text.empty() || run.faceIndex >= holder.faces.size()) {
+            continue;
+        }
+
+        const FontFace& face = holder.faces[run.faceIndex];
+        hb_font_t* hbFont = hb_ft_font_create_referenced(face.face);
+        if (hbFont) {
+            hb_ft_font_set_load_flags(hbFont, kGlyphLoadFlags);
+        }
+        hb_buffer_t* buffer = hb_buffer_create();
+        if (!hbFont || !buffer) {
+            if (buffer) {
+                hb_buffer_destroy(buffer);
+            }
+            if (hbFont) {
+                hb_font_destroy(hbFont);
+            }
+            continue;
+        }
+
+        hb_buffer_add_utf8(buffer, run.text.c_str(), static_cast<int>(run.text.size()), 0, static_cast<int>(run.text.size()));
+        hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+        hb_buffer_set_direction(buffer, run.rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
+        hb_buffer_guess_segment_properties(buffer);
+        hb_shape(hbFont, buffer, nullptr, 0);
+
+        unsigned int glyphCount = 0;
+        hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &glyphCount);
+        hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &glyphCount);
+
+        for (unsigned int i = 0; i < glyphCount; ++i) {
+            const CodepointInfo clusterInfo = codepointInfoForCluster(run, infos[i].cluster);
+            const unsigned int codepoint = clusterInfo.codepoint;
+            float advance = static_cast<float>(positions[i].x_advance) / 64.0f;
+            if (isCombiningMark(codepoint)) {
+                advance = 0.0f;
+            }
+
+            shaped.push_back({makeGlyphKey(run.faceIndex, infos[i].codepoint),
+                              codepoint,
+                              static_cast<int>(run.sourceOffset + clusterInfo.byteOffset),
+                              static_cast<int>(run.sourceOffset + clusterInfo.byteOffset + clusterInfo.byteLength),
+                              advance,
+                              static_cast<float>(positions[i].x_offset) / 64.0f,
+                              -static_cast<float>(positions[i].y_offset) / 64.0f});
+        }
+
+        hb_buffer_destroy(buffer);
+        hb_font_destroy(hbFont);
+    }
+
+    return shaped;
+}
+#endif
+
+std::vector<TextPrimitive::ShapedGlyph> shapeTextWithFontStack(FontInfoHolder& holder,
+                                                               const std::string& text,
+                                                               float fontSize) {
+#if defined(EUI_HAS_HARFBUZZ)
+    std::vector<TextPrimitive::ShapedGlyph> shaped = shapeWithHarfBuzz(holder, text, fontSize);
+#else
+    std::vector<TextPrimitive::ShapedGlyph> shaped = shapeWithFallback(holder, text, fontSize);
+#endif
+    for (TextPrimitive::ShapedGlyph& glyph : shaped) {
+        int nextStart = static_cast<int>(text.size());
+        for (const TextPrimitive::ShapedGlyph& candidate : shaped) {
+            if (candidate.byteStart > glyph.byteStart && candidate.byteStart < nextStart) {
+                nextStart = candidate.byteStart;
+            }
+        }
+        glyph.byteEnd = std::max(glyph.byteEnd, nextStart);
+    }
+    return shaped;
+}
+
+TextPrimitive::TextMetrics makeTextMetrics(const std::string& text,
+                                           const std::vector<TextPrimitive::ShapedGlyph>& shaped) {
+    TextPrimitive::TextMetrics metrics;
+    auto addStop = [&](int byteIndex, float x) {
+        byteIndex = std::clamp(byteIndex, 0, static_cast<int>(text.size()));
+        const auto it = std::lower_bound(metrics.byteIndices.begin(), metrics.byteIndices.end(), byteIndex);
+        if (it != metrics.byteIndices.end() && *it == byteIndex) {
+            const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
+            metrics.caretX[slot] = x;
+            return;
+        }
+        const size_t slot = static_cast<size_t>(std::distance(metrics.byteIndices.begin(), it));
+        metrics.byteIndices.insert(it, byteIndex);
+        metrics.caretX.insert(metrics.caretX.begin() + static_cast<std::ptrdiff_t>(slot), x);
+    };
+
+    addStop(0, 0.0f);
+
+    float cursorX = 0.0f;
+    for (const TextPrimitive::ShapedGlyph& glyph : shaped) {
+        const float startX = cursorX;
+        cursorX += glyph.advance;
+        addStop(glyph.byteStart, startX);
+        addStop(glyph.byteEnd, cursorX);
+    }
+
+    metrics.width = cursorX;
+    addStop(static_cast<int>(text.size()), metrics.width);
+    return metrics;
+}
+
+bool appendToAtlas(AtlasPage& page,
+                   const unsigned char* pixels,
+                   int width,
+                   int height,
+                   GLenum format,
+                   int channels,
+                   TextPrimitive::Glyph& glyph) {
+    if (width <= 0 || height <= 0) {
+        return true;
+    }
+
+    if (page.x + width + 1 >= page.width) {
+        page.x = 1;
+        page.y += page.rowHeight + 1;
+        page.rowHeight = 0;
+    }
+    if (page.y + height + 1 >= page.height) {
+        return false;
+    }
+
+    glBindTexture(GL_TEXTURE_2D, page.texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, page.x, page.y, width, height, format, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glyph.u0 = static_cast<float>(page.x) / static_cast<float>(page.width);
+    glyph.v0 = static_cast<float>(page.y) / static_cast<float>(page.height);
+    glyph.u1 = static_cast<float>(page.x + width) / static_cast<float>(page.width);
+    glyph.v1 = static_cast<float>(page.y + height) / static_cast<float>(page.height);
+
+    page.x += width + 1;
+    page.rowHeight = std::max(page.rowHeight, height);
+    (void)channels;
+    return true;
+}
+
+std::vector<unsigned char> copyGrayBitmap(const FT_Bitmap& bitmap) {
+    if (bitmap.width == 0 || bitmap.rows == 0 || !bitmap.buffer ||
+        std::abs(bitmap.pitch) < static_cast<int>(bitmap.width)) {
+        return {};
+    }
+    std::vector<unsigned char> compact(static_cast<size_t>(bitmap.width) * bitmap.rows);
+    const int pitch = std::abs(bitmap.pitch);
+    const unsigned char* base = bitmap.pitch >= 0
+        ? bitmap.buffer
+        : bitmap.buffer + static_cast<ptrdiff_t>(bitmap.rows - 1) * pitch;
+    for (unsigned int row = 0; row < bitmap.rows; ++row) {
+        const unsigned char* source = bitmap.pitch >= 0
+            ? base + static_cast<ptrdiff_t>(row) * pitch
+            : base - static_cast<ptrdiff_t>(row) * pitch;
+        std::copy(source, source + bitmap.width, compact.begin() + static_cast<ptrdiff_t>(row) * bitmap.width);
+    }
+    return compact;
+}
+
+std::vector<unsigned char> copyBgraBitmapAsRgba(const FT_Bitmap& bitmap) {
+    if (bitmap.width == 0 || bitmap.rows == 0 || !bitmap.buffer ||
+        std::abs(bitmap.pitch) < static_cast<int>(bitmap.width * 4)) {
+        return {};
+    }
+    std::vector<unsigned char> compact(static_cast<size_t>(bitmap.width) * bitmap.rows * 4);
+    const int pitch = std::abs(bitmap.pitch);
+    const unsigned char* base = bitmap.pitch >= 0
+        ? bitmap.buffer
+        : bitmap.buffer + static_cast<ptrdiff_t>(bitmap.rows - 1) * pitch;
+    for (unsigned int row = 0; row < bitmap.rows; ++row) {
+        const unsigned char* source = bitmap.pitch >= 0
+            ? base + static_cast<ptrdiff_t>(row) * pitch
+            : base - static_cast<ptrdiff_t>(row) * pitch;
+        unsigned char* target = compact.data() + static_cast<ptrdiff_t>(row) * bitmap.width * 4;
+        for (unsigned int x = 0; x < bitmap.width; ++x) {
+            target[x * 4 + 0] = source[x * 4 + 2];
+            target[x * 4 + 1] = source[x * 4 + 1];
+            target[x * 4 + 2] = source[x * 4 + 0];
+            target[x * 4 + 3] = source[x * 4 + 3];
+        }
+    }
+    return compact;
 }
 
 } // namespace
@@ -474,7 +1041,7 @@ bool TextPrimitive::initialize() {
     shaderProgram_ = resources.shaderProgram;
     windowSizeLocation_ = resources.windowSizeLocation;
     colorLocation_ = resources.colorLocation;
-    textureLocation_ = resources.textureLocation;
+    textureLocation_ = resources.grayTextureLocation;
     return true;
 }
 
@@ -641,69 +1208,28 @@ float TextPrimitive::measureTextWidth(const std::string& text,
                                       const std::string& fontFamily,
                                       float fontSize,
                                       int fontWeight) {
+    return measureTextMetrics(text, fontFamily, fontSize, fontWeight).width;
+}
+
+TextPrimitive::TextMetrics TextPrimitive::measureTextMetrics(const std::string& text,
+                                                             const std::string& fontFamily,
+                                                             float fontSize,
+                                                             int fontWeight) {
+    TextMetrics empty;
+    empty.byteIndices = {0};
+    empty.caretX = {0.0f};
     if (text.empty()) {
-        return 0.0f;
+        return empty;
     }
 
     const float size = std::max(1.0f, fontSize);
     const std::string fontPath = resolveFontPath(fontFamily, fontWeight);
     auto holder = loadSharedFontStack(fontPath, size);
     if (!holder || holder->faces.empty()) {
-        return 0.0f;
+        return empty;
     }
 
-    float width = 0.0f;
-    size_t index = 0;
-    while (index < text.size()) {
-        const unsigned int codepoint = readCodepoint(text, index);
-        const FontFace* face = &holder->faces.front();
-        if (codepoint != ' ' && codepoint != '\t') {
-            for (const FontFace& candidate : holder->faces) {
-                if (stbtt_FindGlyphIndex(&candidate.info, static_cast<int>(codepoint)) != 0) {
-                    face = &candidate;
-                    break;
-                }
-            }
-
-            if (stbtt_FindGlyphIndex(&face->info, static_cast<int>(codepoint)) == 0) {
-                for (const std::string& fallbackPath : holder->lazyFallbackPaths) {
-                    if (fallbackPath.empty()) {
-                        continue;
-                    }
-
-                    const bool alreadyLoaded = std::any_of(holder->faces.begin(), holder->faces.end(),
-                                                           [&](const FontFace& loadedFace) {
-                                                               return loadedFace.path == fallbackPath;
-                                                           });
-                    if (alreadyLoaded) {
-                        continue;
-                    }
-
-                    FontFace fallback;
-                    if (!loadFontFace(fallbackPath, size, !isFontAwesomePath(fallbackPath), fallback)) {
-                        continue;
-                    }
-
-                    if (stbtt_FindGlyphIndex(&fallback.info, static_cast<int>(codepoint)) != 0) {
-                        holder->faces.push_back(std::move(fallback));
-                        face = &holder->faces.back();
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (stbtt_FindGlyphIndex(&face->info, static_cast<int>(codepoint)) == 0) {
-            width += size * 0.5f;
-            continue;
-        }
-
-        int advance = 0;
-        int leftSideBearing = 0;
-        stbtt_GetCodepointHMetrics(&face->info, static_cast<int>(codepoint), &advance, &leftSideBearing);
-        width += static_cast<float>(advance) * face->scale;
-    }
-    return width;
+    return makeTextMetrics(text, shapeTextWithFontStack(*holder, text, size));
 }
 
 void TextPrimitive::setDefaultFontFiles(const std::string& textFontFile, const std::string& iconFontFile) {
@@ -731,13 +1257,21 @@ void TextPrimitive::render(int windowWidth, int windowHeight) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    const SharedTextRenderResources& resources = sharedTextRenderResources();
+    const SharedTextAtlas& atlas = sharedTextAtlas();
+
     glUseProgram(shaderProgram_);
     glUniform2f(windowSizeLocation_, static_cast<float>(windowWidth), static_cast<float>(windowHeight));
     glUniform4f(colorLocation_, style_.color.r, style_.color.g, style_.color.b, style_.color.a);
-    glUniform1i(textureLocation_, 0);
+    glUniform1i(resources.grayTextureLocation, 0);
+    glUniform1i(resources.colorTextureLocation, 1);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sharedTextAtlas().texture);
+    glBindTexture(GL_TEXTURE_2D, atlas.gray.texture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, atlas.color.texture ? atlas.color.texture : atlas.gray.texture);
+    glActiveTexture(GL_TEXTURE0);
+
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices_.size() * sizeof(float)), vertices_.data(), GL_DYNAMIC_DRAW);
@@ -745,6 +1279,9 @@ void TextPrimitive::render(int windowWidth, int windowHeight) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
 
     if (!blendEnabled) {
         glDisable(GL_BLEND);
@@ -759,8 +1296,7 @@ bool TextPrimitive::loadFont() {
     }
 
     fontInfoStorage_ = holder;
-    fontData_ = holder->faces.front().data;
-    scale_ = holder->faces.front().scale;
+    scale_ = 1.0f;
     ascent_ = holder->faces.front().ascent;
     descent_ = holder->faces.front().descent;
     lineGap_ = holder->faces.front().lineGap;
@@ -771,8 +1307,11 @@ bool TextPrimitive::loadFont() {
     return true;
 }
 
-bool TextPrimitive::ensureGlyph(unsigned int codepoint) {
-    if (findGlyph(codepoint)) {
+bool TextPrimitive::ensureGlyph(const ShapedGlyph& shaped) {
+    if (shaped.key == 0) {
+        return true;
+    }
+    if (findGlyph(shaped.key)) {
         return true;
     }
 
@@ -785,146 +1324,105 @@ bool TextPrimitive::ensureGlyph(unsigned int codepoint) {
         return false;
     }
 
-    const FontFace* face = &holder->faces.front();
-    if (codepoint != ' ' && codepoint != '\t') {
-        for (const FontFace& candidate : holder->faces) {
-            if (stbtt_FindGlyphIndex(&candidate.info, static_cast<int>(codepoint)) != 0) {
-                face = &candidate;
-                break;
-            }
-        }
+    const size_t faceIndex = faceIndexFromGlyphKey(shaped.key);
+    const unsigned int glyphIndex = glyphIndexFromGlyphKey(shaped.key);
+    if (faceIndex >= holder->faces.size()) {
+        return false;
+    }
 
-        if (stbtt_FindGlyphIndex(&face->info, static_cast<int>(codepoint)) == 0) {
-            for (const std::string& fallbackPath : holder->lazyFallbackPaths) {
-                if (fallbackPath.empty()) {
-                    continue;
-                }
-                const bool alreadyLoaded = std::any_of(holder->faces.begin(), holder->faces.end(),
-                                                       [&](const FontFace& loadedFace) {
-                                                           return loadedFace.path == fallbackPath;
-                                                       });
-                if (alreadyLoaded) {
-                    continue;
-                }
+    FontFace& face = holder->faces[faceIndex];
+    Glyph glyph;
+    glyph.advance = shaped.advance;
+    glyph.colored = face.colored;
 
-                FontFace fallback;
-                if (!loadFontFace(fallbackPath, style_.fontSize, !isFontAwesomePath(fallbackPath), fallback)) {
-                    continue;
-                }
+    if (glyphIndex == 0 || shaped.codepoint == ' ' || shaped.codepoint == '\t') {
+        cacheGlyph(shaped.key, glyph);
+        return true;
+    }
 
-                if (stbtt_FindGlyphIndex(&fallback.info, static_cast<int>(codepoint)) != 0) {
-                    holder->faces.push_back(std::move(fallback));
-                    face = &holder->faces.back();
-                    break;
-                }
-            }
-        }
+    if (FT_Load_Glyph(face.face, glyphIndex, kGlyphLoadFlags) != 0) {
+        cacheGlyph(shaped.key, glyph);
+        return true;
+    }
 
-        if (stbtt_FindGlyphIndex(&face->info, static_cast<int>(codepoint)) == 0) {
-            Glyph missingGlyph;
-            missingGlyph.advance = style_.fontSize * 0.5f;
-            cacheGlyph(codepoint, missingGlyph);
+    FT_GlyphSlot slot = face.face->glyph;
+    glyph.advance = shaped.advance;
+
+    if (slot->format != FT_GLYPH_FORMAT_BITMAP) {
+        if (FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL) != 0) {
+            cacheGlyph(shaped.key, glyph);
             return true;
         }
     }
 
-    int advance = 0;
-    int leftSideBearing = 0;
-    stbtt_GetCodepointHMetrics(&face->info, static_cast<int>(codepoint), &advance, &leftSideBearing);
+    const FT_Bitmap& bitmap = slot->bitmap;
+    const bool colorBitmap = bitmap.pixel_mode == FT_PIXEL_MODE_BGRA;
+    glyph.colored = colorBitmap;
+    glyph.xOffset = static_cast<float>(slot->bitmap_left);
+    glyph.yOffset = face.ascent - static_cast<float>(slot->bitmap_top);
+    glyph.width = static_cast<float>(bitmap.width);
+    glyph.height = static_cast<float>(bitmap.rows);
 
-    Glyph glyph;
-    glyph.advance = static_cast<float>(advance) * face->scale;
-    glyph.useSdf = face->useSdf;
-
-    if (codepoint == ' ' || codepoint == '\t') {
-        cacheGlyph(codepoint, glyph);
+    if (bitmap.width == 0 || bitmap.rows == 0 || !bitmap.buffer) {
+        cacheGlyph(shaped.key, glyph);
         return true;
     }
 
-    const std::string cacheKey = glyphCacheKey(*face, style_.fontSize, codepoint);
+    const std::string cacheKey = glyphCacheKey(face, style_.fontSize, glyphIndex, colorBitmap);
     SharedTextAtlas& atlas = sharedTextAtlas();
-    if (const auto cached = atlas.glyphs.find(cacheKey); cached != atlas.glyphs.end()) {
-        cacheGlyph(codepoint, cached->second);
+    AtlasPage& page = colorBitmap ? atlas.color : atlas.gray;
+    if (const auto cached = page.glyphs.find(cacheKey); cached != page.glyphs.end()) {
+        glyph = cached->second;
+        glyph.advance = shaped.advance;
+        cacheGlyph(shaped.key, glyph);
         return true;
     }
 
-    int width = 0;
-    int height = 0;
-    int xoff = 0;
-    int yoff = 0;
-    const float bitmapScale = face->useSdf ? face->scale * SdfOversample : face->scale;
-    unsigned char* bitmap = face->useSdf
-        ? stbtt_GetCodepointSDF(&face->info, bitmapScale, static_cast<int>(codepoint),
-                                SdfPadding, SdfOnEdgeValue, SdfPixelDistanceScale, &width, &height, &xoff, &yoff)
-        : stbtt_GetCodepointBitmap(&face->info, bitmapScale, bitmapScale, static_cast<int>(codepoint),
-                                   &width, &height, &xoff, &yoff);
-    if (!bitmap || width <= 0 || height <= 0) {
-        if (bitmap && face->useSdf) {
-            stbtt_FreeSDF(bitmap, nullptr);
-        } else if (bitmap) {
-            stbtt_FreeBitmap(bitmap, nullptr);
+    if (colorBitmap) {
+        if (!ensureAtlasPage(atlas.color, kColorAtlasSize, kColorAtlasSize, 4)) {
+            cacheGlyph(shaped.key, glyph);
+            return true;
         }
-        cacheGlyph(codepoint, glyph);
-        return true;
-    }
-
-    if (atlas.x + width + 1 >= atlas.width) {
-        atlas.x = 1;
-        atlas.y += atlas.rowHeight + 1;
-        atlas.rowHeight = 0;
-    }
-    if (atlas.y + height + 1 >= atlas.height) {
-        if (face->useSdf) {
-            stbtt_FreeSDF(bitmap, nullptr);
-        } else {
-            stbtt_FreeBitmap(bitmap, nullptr);
+        std::vector<unsigned char> rgba = copyBgraBitmapAsRgba(bitmap);
+        if (rgba.empty()) {
+            cacheGlyph(shaped.key, glyph);
+            return true;
         }
-        return false;
-    }
-
-    glBindTexture(GL_TEXTURE_2D, atlas.texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, atlas.x, atlas.y, width, height, GL_RED, GL_UNSIGNED_BYTE, bitmap);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    const float layoutScale = face->useSdf ? 1.0f / SdfOversample : 1.0f;
-    glyph.xOffset = static_cast<float>(xoff) * layoutScale;
-    glyph.yOffset = static_cast<float>(yoff) * layoutScale + face->ascent;
-    glyph.width = static_cast<float>(width) * layoutScale;
-    glyph.height = static_cast<float>(height) * layoutScale;
-    glyph.u0 = static_cast<float>(atlas.x) / static_cast<float>(atlas.width);
-    glyph.v0 = static_cast<float>(atlas.y) / static_cast<float>(atlas.height);
-    glyph.u1 = static_cast<float>(atlas.x + width) / static_cast<float>(atlas.width);
-    glyph.v1 = static_cast<float>(atlas.y + height) / static_cast<float>(atlas.height);
-    atlas.glyphs[cacheKey] = glyph;
-    cacheGlyph(codepoint, glyph);
-
-    atlas.x += width + 1;
-    atlas.rowHeight = std::max(atlas.rowHeight, height);
-
-    if (face->useSdf) {
-        stbtt_FreeSDF(bitmap, nullptr);
+        if (!appendToAtlas(atlas.color, rgba.data(), static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows), GL_RGBA, 4, glyph)) {
+            cacheGlyph(shaped.key, glyph);
+            return true;
+        }
+        atlas.color.glyphs[cacheKey] = glyph;
+    } else if (bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
+        std::vector<unsigned char> gray = copyGrayBitmap(bitmap);
+        if (gray.empty()) {
+            cacheGlyph(shaped.key, glyph);
+            return true;
+        }
+        if (!appendToAtlas(atlas.gray, gray.data(), static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows), GL_RED, 1, glyph)) {
+            cacheGlyph(shaped.key, glyph);
+            return true;
+        }
+        atlas.gray.glyphs[cacheKey] = glyph;
     } else {
-        stbtt_FreeBitmap(bitmap, nullptr);
+        cacheGlyph(shaped.key, glyph);
+        return true;
     }
+
+    cacheGlyph(shaped.key, glyph);
     return true;
 }
 
-TextPrimitive::Glyph* TextPrimitive::findGlyph(unsigned int codepoint) {
-    for (auto& item : glyphs_) {
-        if (item.first == codepoint) {
-            return &item.second;
-        }
-    }
-    return nullptr;
+TextPrimitive::Glyph* TextPrimitive::findGlyph(std::uint64_t key) {
+    const auto it = glyphs_.find(key);
+    return it == glyphs_.end() ? nullptr : &it->second;
 }
 
-void TextPrimitive::cacheGlyph(unsigned int codepoint, const Glyph& glyph) {
-    if (Glyph* existing = findGlyph(codepoint)) {
-        *existing = glyph;
+void TextPrimitive::cacheGlyph(std::uint64_t key, const Glyph& glyph) {
+    if (key == 0) {
         return;
     }
-    glyphs_.push_back({codepoint, glyph});
+    glyphs_[key] = glyph;
 }
 
 void TextPrimitive::invalidateLayout() {
@@ -946,28 +1444,37 @@ void TextPrimitive::rebuildLayout() {
     const float lineHeight = style_.lineHeight > 0.0f ? style_.lineHeight : style_.fontSize * 1.2f;
     const float maxWidth = style_.maxWidth > 0.0f ? style_.maxWidth : 0.0f;
 
-    const std::vector<unsigned int> codepoints = decodeUtf8(style_.text);
-    for (unsigned int codepoint : codepoints) {
-        if (codepoint == '\r') {
-            continue;
-        }
-        if (codepoint == '\n') {
-            measuredSize_.x = std::max(measuredSize_.x, currentLine.width);
-            lines_.push_back(currentLine);
-            currentLine = {};
-            cursorX = 0.0f;
-            continue;
+    size_t paragraphStart = 0;
+    while (paragraphStart <= style_.text.size()) {
+        const size_t newline = style_.text.find('\n', paragraphStart);
+        const size_t paragraphEnd = newline == std::string::npos ? style_.text.size() : newline;
+        std::string paragraph = style_.text.substr(paragraphStart, paragraphEnd - paragraphStart);
+        if (!paragraph.empty() && paragraph.back() == '\r') {
+            paragraph.pop_back();
         }
 
-        const float advance = glyphAdvance(codepoint);
-        if (style_.wrap && maxWidth > 0.0f && cursorX > 0.0f && cursorX + advance > maxWidth) {
-            measuredSize_.x = std::max(measuredSize_.x, currentLine.width);
-            lines_.push_back(currentLine);
-            currentLine = {};
-            cursorX = 0.0f;
+        const std::vector<ShapedGlyph> shaped = shapeText(paragraph);
+        for (const ShapedGlyph& glyph : shaped) {
+            const float advance = glyph.advance;
+            if (style_.wrap && maxWidth > 0.0f && cursorX > 0.0f && cursorX + advance > maxWidth) {
+                measuredSize_.x = std::max(measuredSize_.x, currentLine.width);
+                lines_.push_back(currentLine);
+                currentLine = {};
+                cursorX = 0.0f;
+            }
+
+            appendShapedGlyphToLine(currentLine, glyph, cursorX);
         }
 
-        appendCodepointToLine(currentLine, codepoint, cursorX);
+        if (newline == std::string::npos) {
+            break;
+        }
+
+        measuredSize_.x = std::max(measuredSize_.x, currentLine.width);
+        lines_.push_back(currentLine);
+        currentLine = {};
+        cursorX = 0.0f;
+        paragraphStart = newline + 1;
     }
 
     measuredSize_.x = std::max(measuredSize_.x, currentLine.width);
@@ -1007,7 +1514,7 @@ void TextPrimitive::rebuildVertices() {
             const float y0 = lineY + laidOut.y + glyph.yOffset;
             const float x1 = x0 + glyph.width;
             const float y1 = y0 + glyph.height;
-            const float useSdf = glyph.useSdf ? 1.0f : 0.0f;
+            const float colored = glyph.colored ? 1.0f : 0.0f;
             Vec2 p0{x0, y0};
             Vec2 p1{x1, y0};
             Vec2 p2{x1, y1};
@@ -1052,75 +1559,46 @@ void TextPrimitive::rebuildVertices() {
             }
 
             vertices_.insert(vertices_.end(), {
-                p0.x, p0.y, glyph.u0, glyph.v0, useSdf,
-                p1.x, p1.y, glyph.u1, glyph.v0, useSdf,
-                p2.x, p2.y, glyph.u1, glyph.v1, useSdf,
-                p0.x, p0.y, glyph.u0, glyph.v0, useSdf,
-                p2.x, p2.y, glyph.u1, glyph.v1, useSdf,
-                p3.x, p3.y, glyph.u0, glyph.v1, useSdf
+                p0.x, p0.y, glyph.u0, glyph.v0, colored,
+                p1.x, p1.y, glyph.u1, glyph.v0, colored,
+                p2.x, p2.y, glyph.u1, glyph.v1, colored,
+                p0.x, p0.y, glyph.u0, glyph.v0, colored,
+                p2.x, p2.y, glyph.u1, glyph.v1, colored,
+                p3.x, p3.y, glyph.u0, glyph.v1, colored
             });
         }
     }
     verticesDirty_ = false;
 }
 
-std::vector<unsigned int> TextPrimitive::decodeUtf8(const std::string& text) const {
-    std::vector<unsigned int> codepoints;
-    size_t index = 0;
-    while (index < text.size()) {
-        codepoints.push_back(readCodepoint(text, index));
+std::vector<TextPrimitive::ShapedGlyph> TextPrimitive::shapeText(const std::string& text) {
+    if (fontDirty_ && !loadFont()) {
+        return {};
     }
-    return codepoints;
+    auto holder = std::static_pointer_cast<FontInfoHolder>(fontInfoStorage_);
+    if (!holder || holder->faces.empty()) {
+        return {};
+    }
+    return shapeTextWithFontStack(*holder, text, std::max(1.0f, style_.fontSize));
 }
 
-float TextPrimitive::glyphAdvance(unsigned int codepoint) {
-    if (!ensureGlyph(codepoint)) {
-        return style_.fontSize * 0.5f;
-    }
-    if (const Glyph* glyph = findGlyph(codepoint)) {
-        return glyph->advance;
-    }
-    return style_.fontSize * 0.5f;
-}
-
-void TextPrimitive::appendCodepointToLine(Line& line, unsigned int codepoint, float& cursorX) {
-    if (!ensureGlyph(codepoint)) {
+void TextPrimitive::appendShapedGlyphToLine(Line& line, const ShapedGlyph& shaped, float& cursorX) {
+    if (!ensureGlyph(shaped)) {
+        cursorX += shaped.advance;
+        line.width = cursorX;
         return;
     }
 
-    const Glyph* glyph = findGlyph(codepoint);
-    if (!glyph) {
-        return;
+    const Glyph* glyph = findGlyph(shaped.key);
+    if (glyph && shaped.key != 0 && shaped.codepoint != ' ' && shaped.codepoint != '\t') {
+        line.glyphs.push_back({*glyph, cursorX + shaped.xOffset, shaped.yOffset});
     }
-    if (codepoint != ' ' && codepoint != '\t') {
-        line.glyphs.push_back({*glyph, cursorX, 0.0f});
-    }
-    cursorX += glyph->advance;
+    cursorX += shaped.advance;
     line.width = cursorX;
 }
 
 unsigned int TextPrimitive::readCodepoint(const std::string& text, size_t& index) {
-    const unsigned char first = static_cast<unsigned char>(text[index++]);
-    if (first < 0x80) {
-        return first;
-    }
-    if ((first >> 5) == 0x6 && index < text.size()) {
-        return ((first & 0x1F) << 6) | (static_cast<unsigned char>(text[index++]) & 0x3F);
-    }
-    if ((first >> 4) == 0xE && index + 1 < text.size()) {
-        unsigned int cp = (first & 0x0F) << 12;
-        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 6;
-        cp |= static_cast<unsigned char>(text[index++]) & 0x3F;
-        return cp;
-    }
-    if ((first >> 3) == 0x1E && index + 2 < text.size()) {
-        unsigned int cp = (first & 0x07) << 18;
-        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 12;
-        cp |= (static_cast<unsigned char>(text[index++]) & 0x3F) << 6;
-        cp |= static_cast<unsigned char>(text[index++]) & 0x3F;
-        return cp;
-    }
-    return '?';
+    return readUtf8Codepoint(text, index);
 }
 
 std::string TextPrimitive::resolveFontPath(const std::string& fontFamily, int fontWeight) {
@@ -1142,8 +1620,23 @@ std::string TextPrimitive::resolveFontPath(const std::string& fontFamily, int fo
     }
 
 #ifdef _WIN32
+    if (fontFamily == "monospace" || fontFamily == "Mono" ||
+        fontFamily == "Cascadia Mono" || fontFamily == "Cascadia Code") {
+        if (const std::string path = existingPath("C:/Windows/Fonts/CascadiaMono.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("C:/Windows/Fonts/CascadiaCode.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("C:/Windows/Fonts/consola.ttf"); !path.empty()) {
+            return path;
+        }
+    }
     if (fontFamily == "Microsoft YaHei" || fontFamily == "YaHei") {
         return "C:/Windows/Fonts/msyh.ttc";
+    }
+    if (fontFamily == "Segoe UI Emoji" || fontFamily == "Emoji") {
+        return "C:/Windows/Fonts/seguiemj.ttf";
     }
     if (fontFamily == "SimHei") {
         return "C:/Windows/Fonts/simhei.ttf";
@@ -1152,8 +1645,49 @@ std::string TextPrimitive::resolveFontPath(const std::string& fontFamily, int fo
         return resolveDefaultUiFontPath();
     }
     return resolveDefaultUiFontPath();
+#elif defined(__APPLE__)
+    if (fontFamily == "monospace" || fontFamily == "Mono" ||
+        fontFamily == "SF Mono" || fontFamily == "Menlo" || fontFamily == "Monaco") {
+        if (const std::string path = existingPath("/System/Library/Fonts/SFNSMono.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/System/Library/Fonts/Supplemental/Menlo.ttc"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/System/Library/Fonts/Menlo.ttc"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/System/Library/Fonts/Monaco.ttf"); !path.empty()) {
+            return path;
+        }
+    }
+    if (fontFamily == "Noto Color Emoji" || fontFamily == "Apple Color Emoji" || fontFamily == "Emoji") {
+        return "/System/Library/Fonts/Apple Color Emoji.ttc";
+    }
+    if (fontWeight >= 600) {
+        return resolveDefaultUiFontPath();
+    }
+    return resolveDefaultUiFontPath();
 #else
     (void)fontWeight;
+    if (fontFamily == "monospace" || fontFamily == "Mono") {
+        if (const std::string path = existingPath("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/usr/share/fonts/truetype/liberation2/LiberationMono-Regular.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf"); !path.empty()) {
+            return path;
+        }
+        if (const std::string path = existingPath("/usr/share/fonts/opentype/noto/NotoSansMono-Regular.ttf"); !path.empty()) {
+            return path;
+        }
+        return "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
+    }
+    if (fontFamily == "Noto Color Emoji" || fontFamily == "Emoji") {
+        return "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf";
+    }
     return resolveDefaultUiFontPath();
 #endif
 }

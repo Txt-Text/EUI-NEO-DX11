@@ -17,6 +17,7 @@ set_property(CACHE EUI_DEPS_MODE PROPERTY STRINGS bundled auto fetch)
 if(NOT EUI_DEPS_MODE MATCHES "^(bundled|auto|fetch)$")
     message(FATAL_ERROR "EUI_DEPS_MODE must be one of: bundled, auto, fetch")
 endif()
+option(EUI_ENABLE_HARFBUZZ "Enable HarfBuzz shaping for complex text" ON)
 
 set(EUI_THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3rd")
 
@@ -126,16 +127,79 @@ else()
     set(TRAY_INCLUDE_DIR "${tray_SOURCE_DIR}")
 endif()
 
+eui_use_bundled_dependency(
+    EUI_USE_BUNDLED_FREETYPE
+    "FreeType"
+    "${EUI_THIRD_PARTY_DIR}/freetype"
+    "CMakeLists.txt"
+)
+
+if(EUI_ENABLE_HARFBUZZ)
+    eui_use_bundled_dependency(
+        EUI_USE_BUNDLED_HARFBUZZ
+        "HarfBuzz"
+        "${EUI_THIRD_PARTY_DIR}/harfbuzz"
+        "CMakeLists.txt"
+    )
+endif()
+
 find_package(OpenGL REQUIRED)
 find_package(Threads REQUIRED)
+
+set(FT_DISABLE_ZLIB ON CACHE BOOL "Disable zlib support in bundled FreeType" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "Disable bzip2 support in bundled FreeType" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "Disable png support in bundled FreeType" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "Disable HarfBuzz support in bundled FreeType" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "Disable brotli support in bundled FreeType" FORCE)
+if(EUI_USE_BUNDLED_FREETYPE)
+    add_subdirectory("${EUI_THIRD_PARTY_DIR}/freetype" "${CMAKE_CURRENT_BINARY_DIR}/_deps/freetype-bundled-build" EXCLUDE_FROM_ALL)
+    if(TARGET freetype AND NOT TARGET Freetype::Freetype)
+        add_library(Freetype::Freetype ALIAS freetype)
+    endif()
+    if(MSVC AND TARGET freetype)
+        target_compile_options(freetype PRIVATE /utf-8 /wd4819 /wd4244 /wd4267)
+    endif()
+else()
+    find_package(Freetype REQUIRED)
+endif()
+
 if(NOT WIN32)
     find_package(CURL REQUIRED)
 else()
     find_package(CURL QUIET)
 endif()
 
-if(UNIX AND NOT APPLE)
+if(EUI_ENABLE_HARFBUZZ)
     find_package(PkgConfig QUIET)
+    if(EUI_USE_BUNDLED_HARFBUZZ)
+        set(HB_HAVE_CAIRO OFF CACHE BOOL "Disable Cairo support in bundled HarfBuzz" FORCE)
+        set(HB_HAVE_GRAPHITE2 OFF CACHE BOOL "Disable Graphite2 support in bundled HarfBuzz" FORCE)
+        set(HB_HAVE_GLIB OFF CACHE BOOL "Disable GLib support in bundled HarfBuzz" FORCE)
+        set(HB_HAVE_GOBJECT OFF CACHE BOOL "Disable GObject support in bundled HarfBuzz" FORCE)
+        set(HB_HAVE_ICU OFF CACHE BOOL "Disable ICU support in bundled HarfBuzz" FORCE)
+        set(HB_HAVE_INTROSPECTION OFF CACHE BOOL "Disable introspection support in bundled HarfBuzz" FORCE)
+        set(HB_BUILD_UTILS OFF CACHE BOOL "Disable HarfBuzz utility tools" FORCE)
+        set(HB_BUILD_SUBSET OFF CACHE BOOL "Disable HarfBuzz subset library" FORCE)
+        add_subdirectory("${EUI_THIRD_PARTY_DIR}/harfbuzz" "${CMAKE_CURRENT_BINARY_DIR}/_deps/harfbuzz-bundled-build" EXCLUDE_FROM_ALL)
+        if(TARGET harfbuzz AND NOT TARGET harfbuzz::harfbuzz)
+            add_library(harfbuzz::harfbuzz ALIAS harfbuzz)
+        endif()
+        if(MSVC AND TARGET harfbuzz)
+            target_compile_options(harfbuzz PRIVATE /utf-8 /wd4819 /wd4244 /wd4267)
+        endif()
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+    else()
+        find_package(harfbuzz QUIET CONFIG)
+        if(PkgConfig_FOUND AND NOT TARGET harfbuzz::harfbuzz)
+            pkg_check_modules(EUI_HARFBUZZ QUIET IMPORTED_TARGET harfbuzz)
+        endif()
+    endif()
+else()
+    find_package(PkgConfig QUIET)
+endif()
+
+if(UNIX AND NOT APPLE)
     if(PkgConfig_FOUND)
         pkg_check_modules(EUI_APPINDICATOR QUIET appindicator3-0.1)
         pkg_check_modules(EUI_GTK3 QUIET gtk+-3.0)
@@ -169,11 +233,19 @@ endif()
 
 function(configure_opengl_app target_name)
     target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TRAY_INCLUDE_DIR})
-    target_link_libraries(${target_name} PRIVATE glfw glad OpenGL::GL Threads::Threads)
+    target_link_libraries(${target_name} PRIVATE glfw glad OpenGL::GL Threads::Threads Freetype::Freetype)
+
+    if(TARGET harfbuzz::harfbuzz)
+        target_link_libraries(${target_name} PRIVATE harfbuzz::harfbuzz)
+        target_compile_definitions(${target_name} PRIVATE EUI_HAS_HARFBUZZ=1)
+    elseif(TARGET PkgConfig::EUI_HARFBUZZ)
+        target_link_libraries(${target_name} PRIVATE PkgConfig::EUI_HARFBUZZ)
+        target_compile_definitions(${target_name} PRIVATE EUI_HAS_HARFBUZZ=1)
+    endif()
 
     if(MSVC)
         set_target_properties(${target_name} PROPERTIES VS_GLOBAL_VcpkgXUseBuiltInApplocalDeps true)
-        target_compile_options(${target_name} PRIVATE $<$<NOT:$<CONFIG:Debug>>:/O1> /GS- /sdl-)
+        target_compile_options(${target_name} PRIVATE $<$<NOT:$<CONFIG:Debug>>:/O1> /GS- /sdl- /utf-8 /wd4819)
         target_link_options(${target_name} PRIVATE /OPT:REF /OPT:ICF /ENTRY:mainCRTStartup /SUBSYSTEM:WINDOWS)
     elseif(APPLE)
         target_compile_options(${target_name} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Os -fno-exceptions -fno-rtti>)

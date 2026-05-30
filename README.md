@@ -38,8 +38,9 @@ Requirements:
 - CMake 3.14+
 - A C++17 compiler
 - OpenGL
+- FreeType and HarfBuzz are vendored under `3rd/` and built by default.
 
-Build-time third-party sources are vendored under `3rd/`, so the default configure/build path is offline. To force an online dependency fetch, configure with `-DEUI_DEPS_MODE=fetch`; to use local sources and only fetch missing dependencies, use `-DEUI_DEPS_MODE=auto`.
+Build-time third-party sources for GLFW/glad/tray/FreeType/HarfBuzz are vendored under `3rd/`, so the default configure/build path is offline. To force an online dependency fetch for vendored-style dependencies, configure with `-DEUI_DEPS_MODE=fetch`; to use local sources and only fetch missing dependencies, use `-DEUI_DEPS_MODE=auto`. HarfBuzz shaping is enabled by default and can be disabled with `-DEUI_ENABLE_HARFBUZZ=OFF`.
 
 Windows / PowerShell example:
 

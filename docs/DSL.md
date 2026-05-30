@@ -222,6 +222,8 @@ Text 支持：
 
 `.icon(...)` 会自动使用图标字体；图标字体默认来自 `core/text.cpp`，也可以通过配置里的 `.iconFont(...)` 按 app 覆盖。
 
+底层文本使用 FreeType 渲染 glyph，启用 HarfBuzz 时会进行复杂文本 shaping。`fontFamily("monospace")` 是跨平台等宽字体别名，`fontFamily("Emoji")` 会选择平台 emoji 字体。需要精确光标位置或命中测试时，使用 `core::TextPrimitive::measureTextMetrics(...)` 获取 shaped caret stops。
+
 Text 的 transform 作用在生成后的 glyph 顶点上，适合做滚轮、轻量缩放和旋转动效；命中测试仍按未 transform 的布局 frame 计算。
 
 `ui.label(id)` 是 `ui.text(id)` 的别名。

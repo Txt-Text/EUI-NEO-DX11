@@ -150,6 +150,7 @@ struct Element {
     float hoverVisibleOpacity = 1.0f;
     Transition transition;
     bool explicitFrameAnimation = false;
+    std::string dirtyKey;
 
     std::vector<std::unique_ptr<Element>> children;
 
@@ -566,6 +567,11 @@ public:
 
     Derived& transition(float durationSeconds, Ease ease = Ease::OutCubic) {
         element_->transition = Transition::make(durationSeconds, ease);
+        return self();
+    }
+
+    Derived& dirtyKey(std::string value) {
+        element_->dirtyKey = std::move(value);
         return self();
     }
 

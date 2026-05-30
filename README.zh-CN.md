@@ -38,8 +38,9 @@ EUI-NEO 是一个基于 C++17、OpenGL 和 GLFW 的跨平台高性能轻量级 U
 - CMake 3.14+
 - 支持 C++17 的编译器
 - OpenGL
+- FreeType 和 HarfBuzz 已内置在 `3rd/` 下，默认随项目构建。
 
-构建期第三方源码已内置在 `3rd/` 下，默认配置和构建不需要联网。需要强制联网拉取依赖时，可配置 `-DEUI_DEPS_MODE=fetch`；希望优先用本地源码、缺失时才拉取，可使用 `-DEUI_DEPS_MODE=auto`。
+GLFW/glad/tray/FreeType/HarfBuzz 等构建期第三方源码已内置在 `3rd/` 下，默认配置和构建不需要联网。需要强制联网拉取内置风格依赖时，可配置 `-DEUI_DEPS_MODE=fetch`；希望优先用本地源码、缺失时才拉取，可使用 `-DEUI_DEPS_MODE=auto`。HarfBuzz shaping 默认启用，可通过 `-DEUI_ENABLE_HARFBUZZ=OFF` 关闭。
 
 Windows / PowerShell 示例：
 

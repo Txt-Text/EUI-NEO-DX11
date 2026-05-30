@@ -208,6 +208,7 @@ public:
         texts_.clear();
         images_.clear();
         interactions_.clear();
+        dirtyKeys_.clear();
         layouts_.clear();
         timers_.clear();
         dependentVisualStates_.clear();
@@ -316,6 +317,12 @@ private:
 
     struct InteractionInstance {
         InteractionState state;
+    };
+
+    struct DirtyKeyInstance {
+        std::string key;
+        Rect rect;
+        bool initialized = false;
     };
 
     struct LayoutInstance {
@@ -747,6 +754,27 @@ private:
         return changed;
     }
 
+    void updateExplicitDirtyKey(const Element& element) {
+        if (element.dirtyKey.empty()) {
+            return;
+        }
+
+        DirtyKeyInstance& instance = dirtyKeyInstance(element.id);
+        const Rect current{element.frame.x, element.frame.y, element.frame.width, element.frame.height};
+        if (!instance.initialized) {
+            instance.key = element.dirtyKey;
+            instance.rect = current;
+            instance.initialized = true;
+            return;
+        }
+
+        if (instance.key != element.dirtyKey) {
+            addDirtyUnion(instance.rect, current);
+            instance.key = element.dirtyKey;
+        }
+        instance.rect = current;
+    }
+
     void updateElementTree(const PointerEvent& event,
                            float deltaSeconds,
                            float dpiScale,
@@ -764,6 +792,7 @@ private:
                            const std::string& hoverTargetId,
                            bool ancestorFrameChanged) {
         const bool frameTargetChanged = updateFrameTarget(element);
+        updateExplicitDirtyKey(element);
         updateInteraction(element, event, dpiScale, hoverTargetId);
         updateTimer(element, deltaSeconds);
         updateFrameCallback(element, deltaSeconds);
@@ -807,6 +836,10 @@ private:
 
     InteractionInstance& interactionInstance(const std::string& id) {
         return interactions_.try_emplace(id).first->second;
+    }
+
+    DirtyKeyInstance& dirtyKeyInstance(const std::string& id) {
+        return dirtyKeys_.try_emplace(id).first->second;
     }
 
     LayoutInstance& layoutInstance(const std::string& id) {
@@ -1895,6 +1928,7 @@ private:
     std::unordered_map<std::string, TextInstance> texts_;
     std::unordered_map<std::string, ImageInstance> images_;
     std::unordered_map<std::string, InteractionInstance> interactions_;
+    std::unordered_map<std::string, DirtyKeyInstance> dirtyKeys_;
     std::unordered_map<std::string, LayoutInstance> layouts_;
     std::unordered_map<std::string, TimerInstance> timers_;
     std::unordered_map<std::string, DependentVisualState> dependentVisualStates_;
