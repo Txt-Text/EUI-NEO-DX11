@@ -33,6 +33,7 @@ public:
 
 std::unique_ptr<RenderBackend> createRenderBackend(core::window::Handle window, RenderBackend* shareBackend = nullptr);
 core::window::RenderApi windowRenderApi();
+void initializeRenderBackendLoader();
 
 inline RenderBackend*& activeRenderBackendSlot() {
     static thread_local RenderBackend* backend = nullptr;

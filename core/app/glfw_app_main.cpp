@@ -328,6 +328,7 @@ GLFWwindow* findModalChildWindow(app::DslWindowManager<ManagedWindow>& windows) 
 }
 
 int main() {
+    core::render::initializeRenderBackendLoader();
     if (!glfwInit()) {
         return -1;
     }

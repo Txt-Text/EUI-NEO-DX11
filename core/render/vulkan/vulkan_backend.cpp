@@ -1,6 +1,7 @@
 #include "core/render/vulkan/vulkan_backend.h"
 
 #include "core/render/render_types.h"
+#include "core/render/vulkan/vulkan_rounded_rect_shaders.h"
 
 #if defined(EUI_WINDOW_BACKEND_SDL2)
 #include <SDL.h>
@@ -13,17 +14,32 @@
 #endif
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
+#include <limits>
 #include <set>
 
 namespace core::render::vulkan {
 
 namespace {
 
+constexpr std::size_t kPrimitiveVertexCapacity = 65536;
+
 bool hasExtension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::any_of(extensions.begin(), extensions.end(), [&](const VkExtensionProperties& extension) {
         return std::strcmp(extension.extensionName, name) == 0;
     });
+}
+
+void addUniqueExtension(std::vector<const char*>& extensions, const char* name) {
+    const auto exists = std::any_of(extensions.begin(), extensions.end(), [&](const char* extension) {
+        return std::strcmp(extension, name) == 0;
+    });
+    if (!exists) {
+        extensions.push_back(name);
+    }
 }
 
 std::vector<VkExtensionProperties> instanceExtensions() {
@@ -64,6 +80,57 @@ VkPresentModeKHR choosePresentMode(const std::vector<VkPresentModeKHR>& modes) {
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
+struct RoundedRectPushConstants {
+    float windowAndShape[4] = {};
+    float fillColor[4] = {};
+    float gradientStart[4] = {};
+    float gradientEnd[4] = {};
+    float borderColor[4] = {};
+    float rect[4] = {};
+    float flags[4] = {};
+    float flags2[4] = {};
+};
+
+static_assert(sizeof(RoundedRectPushConstants) == 128, "Rounded rect push constants must fit Vulkan 1.0 minimum size.");
+
+void writeColor(float (&target)[4], const core::Color& color) {
+    target[0] = color.r;
+    target[1] = color.g;
+    target[2] = color.b;
+    target[3] = color.a;
+}
+
+VkShaderModule createShaderModule(VkDevice device, const std::uint32_t* code, std::size_t codeSize) {
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = codeSize;
+    createInfo.pCode = code;
+
+    VkShaderModule module = VK_NULL_HANDLE;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &module) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+    return module;
+}
+
+VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) {
+    const float left = std::clamp(rect.x, 0.0f, static_cast<float>(std::max(0, windowWidth)));
+    const float top = std::clamp(rect.y, 0.0f, static_cast<float>(std::max(0, windowHeight)));
+    const float right = std::clamp(rect.x + rect.width, left, static_cast<float>(std::max(0, windowWidth)));
+    const float bottom = std::clamp(rect.y + rect.height, top, static_cast<float>(std::max(0, windowHeight)));
+
+    VkRect2D result{};
+    result.offset = {
+        static_cast<std::int32_t>(left),
+        static_cast<std::int32_t>(top)
+    };
+    result.extent = {
+        static_cast<std::uint32_t>(std::max(0.0f, right - left)),
+        static_cast<std::uint32_t>(std::max(0.0f, bottom - top))
+    };
+    return result;
+}
+
 } // namespace
 
 VulkanRenderBackend::VulkanRenderBackend(core::window::Handle window, RenderBackend*) : window_(window) {}
@@ -74,9 +141,26 @@ VulkanRenderBackend::~VulkanRenderBackend() {
 
 bool VulkanRenderBackend::initialize() {
     if (window_ == nullptr) {
+        std::fprintf(stderr, "EUI Vulkan: initialize failed: window is null\n");
         return false;
     }
-    initialized_ = createInstance() && createSurface() && pickDevice() && createDevice();
+    if (!createInstance()) {
+        std::fprintf(stderr, "EUI Vulkan: initialize failed: createInstance\n");
+        return false;
+    }
+    if (!createSurface()) {
+        std::fprintf(stderr, "EUI Vulkan: initialize failed: createSurface\n");
+        return false;
+    }
+    if (!pickDevice()) {
+        std::fprintf(stderr, "EUI Vulkan: initialize failed: pickDevice\n");
+        return false;
+    }
+    if (!createDevice()) {
+        std::fprintf(stderr, "EUI Vulkan: initialize failed: createDevice\n");
+        return false;
+    }
+    initialized_ = true;
     return initialized_;
 }
 
@@ -119,6 +203,7 @@ void VulkanRenderBackend::beginFrame(const RenderSurface& surface) {
     frameActive_ = true;
     frameRecorded_ = false;
     renderPassActive_ = false;
+    primitiveVertexUsed_ = 0;
 }
 
 void VulkanRenderBackend::present() {
@@ -190,7 +275,76 @@ void VulkanRenderBackend::clear(const core::Color& color) {
     }
 }
 
-void VulkanRenderBackend::setScissor(bool, const core::Rect&, int) {}
+void VulkanRenderBackend::setScissor(bool enabled, const core::Rect& rect, int) {
+    scissorEnabled_ = enabled;
+    scissorRect_ = rect;
+}
+
+void VulkanRenderBackend::drawRoundedRect(const RoundedRectDrawData& data, int windowWidth, int windowHeight) {
+    const float effectiveAlpha = data.gradient.enabled && !data.shadowPass
+        ? std::max(data.gradient.start.a, data.gradient.end.a)
+        : data.fillColor.a;
+    if (!frameActive_ || windowWidth <= 0 || windowHeight <= 0 || data.opacity <= 0.001f || effectiveAlpha <= 0.001f) {
+        return;
+    }
+    if (!frameRecorded_) {
+        recordClearPass(clearColor_);
+    }
+    if (!renderPassActive_ || !ensureRoundedRectPipeline() || !ensurePrimitiveVertexBuffer(data.vertices.size())) {
+        return;
+    }
+
+    const std::size_t vertexOffset = primitiveVertexUsed_;
+    auto* mappedVertices = static_cast<RoundedRectVertex*>(primitiveVertexMapped_);
+    std::copy(data.vertices.begin(), data.vertices.end(), mappedVertices + vertexOffset);
+    primitiveVertexUsed_ += data.vertices.size();
+
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(windowWidth);
+    viewport.height = static_cast<float>(windowHeight);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffers_[currentImage_], 0, 1, &viewport);
+
+    const core::Rect fullRect{0.0f, 0.0f, static_cast<float>(windowWidth), static_cast<float>(windowHeight)};
+    const VkRect2D scissor = clampScissor(scissorEnabled_ ? scissorRect_ : fullRect, windowWidth, windowHeight);
+    if (scissor.extent.width == 0 || scissor.extent.height == 0) {
+        return;
+    }
+    vkCmdSetScissor(commandBuffers_[currentImage_], 0, 1, &scissor);
+
+    RoundedRectPushConstants constants{};
+    constants.windowAndShape[0] = static_cast<float>(windowWidth);
+    constants.windowAndShape[1] = static_cast<float>(windowHeight);
+    constants.windowAndShape[2] = data.radius;
+    constants.windowAndShape[3] = data.shadowPass ? 0.0f : data.border.width;
+    writeColor(constants.fillColor, data.fillColor);
+    writeColor(constants.gradientStart, data.gradient.start);
+    writeColor(constants.gradientEnd, data.gradient.end);
+    writeColor(constants.borderColor, data.border.color);
+    constants.rect[0] = data.rect.x;
+    constants.rect[1] = data.rect.y;
+    constants.rect[2] = data.rect.width;
+    constants.rect[3] = data.rect.height;
+    constants.flags[0] = data.opacity;
+    constants.flags[1] = data.shadowBlur;
+    constants.flags[2] = data.gradient.enabled && !data.shadowPass ? 1.0f : 0.0f;
+    constants.flags[3] = static_cast<float>(data.gradient.direction == core::GradientDirection::Horizontal ? 0 : 1);
+    constants.flags2[0] = data.shadowPass ? 1.0f : 0.0f;
+
+    const VkDeviceSize bufferOffset = static_cast<VkDeviceSize>(vertexOffset * sizeof(RoundedRectVertex));
+    vkCmdBindPipeline(commandBuffers_[currentImage_], VK_PIPELINE_BIND_POINT_GRAPHICS, roundedRectPipeline_);
+    vkCmdBindVertexBuffers(commandBuffers_[currentImage_], 0, 1, &primitiveVertexBuffer_, &bufferOffset);
+    vkCmdPushConstants(commandBuffers_[currentImage_],
+                       roundedRectPipelineLayout_,
+                       VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                       0,
+                       sizeof(constants),
+                       &constants);
+    vkCmdDraw(commandBuffers_[currentImage_], static_cast<std::uint32_t>(data.vertices.size()), 1, 0, 0);
+}
 
 bool VulkanRenderBackend::createInstance() {
     VkApplicationInfo appInfo{};
@@ -215,6 +369,11 @@ bool VulkanRenderBackend::createInstance() {
     std::uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     if (glfwExtensions == nullptr) {
+        const char* description = nullptr;
+        const int code = glfwGetError(&description);
+        std::fprintf(stderr, "EUI Vulkan: glfwGetRequiredInstanceExtensions failed: %d %s\n",
+                     code,
+                     description != nullptr ? description : "");
         return false;
     }
     extensions.assign(glfwExtensions, glfwExtensions + glfwExtensionCount);
@@ -223,11 +382,11 @@ bool VulkanRenderBackend::createInstance() {
     VkInstanceCreateFlags flags = 0;
     const std::vector<VkExtensionProperties> availableExtensions = instanceExtensions();
     if (hasExtension(availableExtensions, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
-        extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        addUniqueExtension(extensions, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
     }
     if (hasExtension(availableExtensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME)) {
-        extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+        addUniqueExtension(extensions, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     }
 
     VkInstanceCreateInfo createInfo{};
@@ -236,7 +395,15 @@ bool VulkanRenderBackend::createInstance() {
     createInfo.pApplicationInfo = &appInfo;
     createInfo.enabledExtensionCount = static_cast<std::uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
-    return vkCreateInstance(&createInfo, nullptr, &instance_) == VK_SUCCESS;
+    const VkResult result = vkCreateInstance(&createInfo, nullptr, &instance_);
+    if (result != VK_SUCCESS) {
+        std::fprintf(stderr, "EUI Vulkan: vkCreateInstance failed: %d\n", static_cast<int>(result));
+        for (const char* extension : extensions) {
+            std::fprintf(stderr, "EUI Vulkan: requested instance extension: %s\n", extension);
+        }
+        return false;
+    }
+    return true;
 }
 
 bool VulkanRenderBackend::createSurface() {
@@ -412,6 +579,9 @@ bool VulkanRenderBackend::recreateSwapchain(const RenderSurface& surface) {
     if (vkCreateRenderPass(device_, &renderPassInfo, nullptr, &renderPass_) != VK_SUCCESS) {
         return false;
     }
+    if (!ensureRoundedRectPipeline()) {
+        return false;
+    }
 
     framebuffers_.resize(swapchainImageViews_.size());
     for (std::size_t i = 0; i < swapchainImageViews_.size(); ++i) {
@@ -482,6 +652,7 @@ void VulkanRenderBackend::destroySwapchain() {
     frameActive_ = false;
     frameRecorded_ = false;
     renderPassActive_ = false;
+    destroyRoundedRectPipeline();
     if (inFlight_ != VK_NULL_HANDLE) {
         vkDestroyFence(device_, inFlight_, nullptr);
         inFlight_ = VK_NULL_HANDLE;
@@ -523,6 +694,7 @@ void VulkanRenderBackend::destroy() {
         vkDeviceWaitIdle(device_);
     }
     destroySwapchain();
+    destroyPrimitiveVertexBuffer();
     if (device_ != VK_NULL_HANDLE) {
         vkDestroyDevice(device_, nullptr);
         device_ = VK_NULL_HANDLE;
@@ -536,6 +708,228 @@ void VulkanRenderBackend::destroy() {
         instance_ = VK_NULL_HANDLE;
     }
     initialized_ = false;
+}
+
+bool VulkanRenderBackend::ensureRoundedRectPipeline() {
+    if (roundedRectPipeline_ != VK_NULL_HANDLE) {
+        return true;
+    }
+    if (device_ == VK_NULL_HANDLE || renderPass_ == VK_NULL_HANDLE) {
+        return false;
+    }
+
+    VkShaderModule vertexShader = createShaderModule(device_,
+                                                     shaders::kRoundedRectVertexSpirv,
+                                                     shaders::kRoundedRectVertexSpirvSize);
+    VkShaderModule fragmentShader = createShaderModule(device_,
+                                                       shaders::kRoundedRectFragmentSpirv,
+                                                       shaders::kRoundedRectFragmentSpirvSize);
+    if (vertexShader == VK_NULL_HANDLE || fragmentShader == VK_NULL_HANDLE) {
+        if (vertexShader != VK_NULL_HANDLE) {
+            vkDestroyShaderModule(device_, vertexShader, nullptr);
+        }
+        if (fragmentShader != VK_NULL_HANDLE) {
+            vkDestroyShaderModule(device_, fragmentShader, nullptr);
+        }
+        return false;
+    }
+
+    VkPipelineShaderStageCreateInfo shaderStages[2]{};
+    shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    shaderStages[0].module = vertexShader;
+    shaderStages[0].pName = "main";
+    shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shaderStages[1].module = fragmentShader;
+    shaderStages[1].pName = "main";
+
+    VkVertexInputBindingDescription binding{};
+    binding.binding = 0;
+    binding.stride = sizeof(RoundedRectVertex);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    std::array<VkVertexInputAttributeDescription, 2> attributes{};
+    attributes[0].binding = 0;
+    attributes[0].location = 0;
+    attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributes[0].offset = offsetof(RoundedRectVertex, screenX);
+    attributes[1].binding = 0;
+    attributes[1].location = 1;
+    attributes[1].format = VK_FORMAT_R32G32_SFLOAT;
+    attributes[1].offset = offsetof(RoundedRectVertex, localX);
+
+    VkPipelineVertexInputStateCreateInfo vertexInput{};
+    vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInput.vertexBindingDescriptionCount = 1;
+    vertexInput.pVertexBindingDescriptions = &binding;
+    vertexInput.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+    vertexInput.pVertexAttributeDescriptions = attributes.data();
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.lineWidth = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
+                                          VK_COLOR_COMPONENT_G_BIT |
+                                          VK_COLOR_COMPONENT_B_BIT |
+                                          VK_COLOR_COMPONENT_A_BIT;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+
+    std::array<VkDynamicState, 2> dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamicState{};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data();
+
+    VkPushConstantRange pushConstant{};
+    pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(RoundedRectPushConstants);
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+    if (vkCreatePipelineLayout(device_, &pipelineLayoutInfo, nullptr, &roundedRectPipelineLayout_) != VK_SUCCESS) {
+        vkDestroyShaderModule(device_, fragmentShader, nullptr);
+        vkDestroyShaderModule(device_, vertexShader, nullptr);
+        return false;
+    }
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInput;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = roundedRectPipelineLayout_;
+    pipelineInfo.renderPass = renderPass_;
+    pipelineInfo.subpass = 0;
+
+    const bool created = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &roundedRectPipeline_) == VK_SUCCESS;
+    vkDestroyShaderModule(device_, fragmentShader, nullptr);
+    vkDestroyShaderModule(device_, vertexShader, nullptr);
+    if (!created) {
+        destroyRoundedRectPipeline();
+    }
+    return created;
+}
+
+bool VulkanRenderBackend::ensurePrimitiveVertexBuffer(std::size_t vertexCount) {
+    if (vertexCount == 0 || vertexCount > kPrimitiveVertexCapacity) {
+        return false;
+    }
+    if (primitiveVertexBuffer_ == VK_NULL_HANDLE) {
+        const VkDeviceSize size = static_cast<VkDeviceSize>(kPrimitiveVertexCapacity * sizeof(RoundedRectVertex));
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &primitiveVertexBuffer_) != VK_SUCCESS) {
+            return false;
+        }
+
+        VkMemoryRequirements memoryRequirements{};
+        vkGetBufferMemoryRequirements(device_, primitiveVertexBuffer_, &memoryRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memoryRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
+                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (allocInfo.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
+            vkAllocateMemory(device_, &allocInfo, nullptr, &primitiveVertexMemory_) != VK_SUCCESS ||
+            vkBindBufferMemory(device_, primitiveVertexBuffer_, primitiveVertexMemory_, 0) != VK_SUCCESS ||
+            vkMapMemory(device_, primitiveVertexMemory_, 0, size, 0, &primitiveVertexMapped_) != VK_SUCCESS) {
+            destroyPrimitiveVertexBuffer();
+            return false;
+        }
+        primitiveVertexCapacity_ = kPrimitiveVertexCapacity;
+    }
+    return primitiveVertexMapped_ != nullptr && primitiveVertexUsed_ + vertexCount <= primitiveVertexCapacity_;
+}
+
+void VulkanRenderBackend::destroyRoundedRectPipeline() {
+    if (roundedRectPipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, roundedRectPipeline_, nullptr);
+        roundedRectPipeline_ = VK_NULL_HANDLE;
+    }
+    if (roundedRectPipelineLayout_ != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(device_, roundedRectPipelineLayout_, nullptr);
+        roundedRectPipelineLayout_ = VK_NULL_HANDLE;
+    }
+}
+
+void VulkanRenderBackend::destroyPrimitiveVertexBuffer() {
+    if (device_ == VK_NULL_HANDLE) {
+        primitiveVertexBuffer_ = VK_NULL_HANDLE;
+        primitiveVertexMemory_ = VK_NULL_HANDLE;
+        primitiveVertexMapped_ = nullptr;
+        primitiveVertexCapacity_ = 0;
+        primitiveVertexUsed_ = 0;
+        return;
+    }
+    if (primitiveVertexMemory_ != VK_NULL_HANDLE && primitiveVertexMapped_ != nullptr) {
+        vkUnmapMemory(device_, primitiveVertexMemory_);
+        primitiveVertexMapped_ = nullptr;
+    }
+    if (primitiveVertexBuffer_ != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, primitiveVertexBuffer_, nullptr);
+        primitiveVertexBuffer_ = VK_NULL_HANDLE;
+    }
+    if (primitiveVertexMemory_ != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, primitiveVertexMemory_, nullptr);
+        primitiveVertexMemory_ = VK_NULL_HANDLE;
+    }
+    primitiveVertexCapacity_ = 0;
+    primitiveVertexUsed_ = 0;
+}
+
+std::uint32_t VulkanRenderBackend::findMemoryType(std::uint32_t filter, VkMemoryPropertyFlags properties) const {
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memoryProperties);
+    for (std::uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
+        if ((filter & (1u << i)) &&
+            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    return std::numeric_limits<std::uint32_t>::max();
 }
 
 } // namespace core::render::vulkan

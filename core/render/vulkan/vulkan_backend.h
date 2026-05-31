@@ -5,10 +5,31 @@
 
 #include <vulkan/vulkan.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
 namespace core::render::vulkan {
+
+struct RoundedRectVertex {
+    float screenX = 0.0f;
+    float screenY = 0.0f;
+    float screenW = 1.0f;
+    float localX = 0.0f;
+    float localY = 0.0f;
+};
+
+struct RoundedRectDrawData {
+    std::vector<RoundedRectVertex> vertices;
+    core::Color fillColor{};
+    core::Gradient gradient{};
+    core::Border border{};
+    core::Rect rect{};
+    float radius = 0.0f;
+    float opacity = 1.0f;
+    float shadowBlur = 1.0f;
+    bool shadowPass = false;
+};
 
 class VulkanRenderBackend final : public RenderBackend {
 public:
@@ -31,6 +52,7 @@ public:
     void blitRenderCache(int width, int height) override;
     void clear(const core::Color& color) override;
     void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
+    void drawRoundedRect(const RoundedRectDrawData& data, int windowWidth, int windowHeight);
 
 private:
     bool createInstance();
@@ -41,6 +63,11 @@ private:
     void destroySwapchain();
     void destroy();
     void recordClearPass(const core::Color& color);
+    bool ensureRoundedRectPipeline();
+    bool ensurePrimitiveVertexBuffer(std::size_t vertexCount);
+    void destroyRoundedRectPipeline();
+    void destroyPrimitiveVertexBuffer();
+    std::uint32_t findMemoryType(std::uint32_t filter, VkMemoryPropertyFlags properties) const;
 
     core::window::Handle window_ = nullptr;
     VkInstance instance_ = VK_NULL_HANDLE;
@@ -69,7 +96,17 @@ private:
     bool frameActive_ = false;
     bool frameRecorded_ = false;
     bool renderPassActive_ = false;
+    bool scissorEnabled_ = false;
+    core::Rect scissorRect_{};
     core::Color clearColor_{0.0f, 0.0f, 0.0f, 1.0f};
+
+    VkPipelineLayout roundedRectPipelineLayout_ = VK_NULL_HANDLE;
+    VkPipeline roundedRectPipeline_ = VK_NULL_HANDLE;
+    VkBuffer primitiveVertexBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory primitiveVertexMemory_ = VK_NULL_HANDLE;
+    void* primitiveVertexMapped_ = nullptr;
+    std::size_t primitiveVertexCapacity_ = 0;
+    std::size_t primitiveVertexUsed_ = 0;
 };
 
 } // namespace core::render::vulkan
