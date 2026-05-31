@@ -26,7 +26,7 @@
 #include "core/platform/event.h"
 #include "core/platform/platform.h"
 #include "core/platform/native_bridge.h"
-#include "core/render/render_backend.h"
+#include "core/render/opengl/opengl_backend.h"
 #include "core/platform/window_backend.h"
 
 #include <algorithm>
@@ -463,7 +463,7 @@ int main() {
     state.resetTiming(core::window::timeSeconds());
     updateFrameInterval(window, state);
     state.initializeTray();
-    core::render::OpenGLRenderBackend renderBackend(
+    core::render::opengl::OpenGLRenderBackend renderBackend(
         [&] {
             SDL_GL_MakeCurrent(window, context);
         },

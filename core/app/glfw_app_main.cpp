@@ -18,7 +18,7 @@
 #include "core/app/dsl_window_runtime.h"
 #include "core/app/main_window_runtime.h"
 #include "core/platform/platform.h"
-#include "core/render/render_backend.h"
+#include "core/render/opengl/opengl_backend.h"
 
 #include <algorithm>
 #include <chrono>
@@ -355,7 +355,7 @@ int main() {
         cleanupMainWindow();
         return -1;
     }
-    core::render::OpenGLRenderBackend renderBackend(
+    core::render::opengl::OpenGLRenderBackend renderBackend(
         [&] {
             glfwMakeContextCurrent(window);
         },
