@@ -19,7 +19,7 @@
 #include "core/input/input_state.h"
 #include "core/platform/platform.h"
 #include "core/window/window_backend.h"
-#include "core/render/opengl/opengl_backend.h"
+#include "core/render/render_backend.h"
 
 #include <algorithm>
 #include <chrono>
@@ -38,7 +38,7 @@ struct ManagedWindow {
     GLFWwindow* window = nullptr;
     WindowState state;
     app::DslWindowRuntime content;
-    std::unique_ptr<core::render::opengl::OpenGLRenderBackend> renderBackend;
+    std::unique_ptr<core::render::RenderBackend> renderBackend;
 };
 
 struct TimerResolutionGuard {
@@ -205,13 +205,13 @@ void installWindowCallbacks(GLFWwindow* window, WindowState& windowState) {
 
 std::unique_ptr<ManagedWindow> createManagedWindow(const app::DslWindowRequest& request,
                                                    GLFWwindow* parentWindow,
-                                                   core::render::opengl::OpenGLRenderBackend& shareBackend) {
+                                                   core::render::RenderBackend& shareBackend) {
     core::window::WindowCreateRequest windowRequest;
     windowRequest.width = request.width;
     windowRequest.height = request.height;
     windowRequest.title = request.title.c_str();
     windowRequest.parent = parentWindow;
-    windowRequest.renderApi = core::window::RenderApi::OpenGL;
+    windowRequest.renderApi = core::render::windowRenderApi();
     GLFWwindow* childWindow = static_cast<GLFWwindow*>(core::window::createWindow(windowRequest));
     if (!childWindow) {
         return {};
@@ -219,7 +219,11 @@ std::unique_ptr<ManagedWindow> createManagedWindow(const app::DslWindowRequest& 
 
     auto managed = std::make_unique<ManagedWindow>();
     managed->window = childWindow;
-    managed->renderBackend = std::make_unique<core::render::opengl::OpenGLRenderBackend>(childWindow, &shareBackend);
+    managed->renderBackend = core::render::createRenderBackend(childWindow, &shareBackend);
+    if (!managed->renderBackend) {
+        core::window::destroyWindow(childWindow);
+        return {};
+    }
     if (!managed->renderBackend->initialize()) {
         core::window::destroyWindow(childWindow);
         return {};
@@ -310,7 +314,7 @@ void pruneClosedWindows(app::DslWindowManager<ManagedWindow>& windows) {
 
 void createRequestedWindows(app::DslWindowManager<ManagedWindow>& windows,
                             GLFWwindow* shareWindow,
-                            core::render::opengl::OpenGLRenderBackend& shareBackend,
+                            core::render::RenderBackend& shareBackend,
                             const std::vector<app::DslWindowRequest>& requests) {
     windows.createPending(requests, [&](const app::DslWindowRequest& request) {
         return createManagedWindow(request, shareWindow, shareBackend);
@@ -333,7 +337,7 @@ int main() {
     windowRequest.width = app::initialWindowWidth();
     windowRequest.height = app::initialWindowHeight();
     windowRequest.title = app::windowTitle();
-    windowRequest.renderApi = core::window::RenderApi::OpenGL;
+    windowRequest.renderApi = core::render::windowRenderApi();
     GLFWwindow* window = static_cast<GLFWwindow*>(core::window::createWindow(windowRequest));
     if (!window) {
         glfwTerminate();
@@ -356,7 +360,11 @@ int main() {
         glfwTerminate();
     };
 
-    auto renderBackend = std::make_unique<core::render::opengl::OpenGLRenderBackend>(window);
+    auto renderBackend = core::render::createRenderBackend(window);
+    if (!renderBackend) {
+        cleanupMainWindow();
+        return -1;
+    }
     if (!renderBackend->initialize()) {
         cleanupMainWindow();
         return -1;

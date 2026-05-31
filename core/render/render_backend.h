@@ -1,6 +1,9 @@
 #pragma once
 
 #include "core/render/render_surface.h"
+#include "core/window/window_types.h"
+
+#include <memory>
 
 namespace core {
 struct Color;
@@ -13,6 +16,8 @@ class RenderBackend {
 public:
     virtual ~RenderBackend() = default;
 
+    virtual bool initialize() = 0;
+    virtual bool valid() const = 0;
     virtual void makeCurrent() = 0;
     virtual void beginFrame(const RenderSurface& surface) = 0;
     virtual void present() = 0;
@@ -25,6 +30,9 @@ public:
     virtual void clear(const core::Color& color) = 0;
     virtual void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) = 0;
 };
+
+std::unique_ptr<RenderBackend> createRenderBackend(core::window::Handle window, RenderBackend* shareBackend = nullptr);
+core::window::RenderApi windowRenderApi();
 
 inline RenderBackend*& activeRenderBackendSlot() {
     static thread_local RenderBackend* backend = nullptr;

@@ -70,6 +70,7 @@ set(CORE_SOURCES
     core/platform/native_bridge.c
     core/platform/platform.cpp
     core/render/image_facade.cpp
+    core/render/render_backend.cpp
     core/platform/tray_bridge.c
     core/window/window_backend.cpp
 )
@@ -80,6 +81,10 @@ if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "opengl")
         core/render/opengl/opengl_image.cpp
         core/render/opengl/opengl_primitives.cpp
         core/render/opengl/opengl_text.cpp
+    )
+elseif(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan")
+    list(APPEND CORE_SOURCES
+        "${EUI_VULKAN_BACKEND_SOURCE}"
     )
 endif()
 
@@ -95,6 +100,9 @@ target_link_libraries(eui_neo PUBLIC Threads::Threads)
 if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "opengl")
     target_compile_definitions(eui_neo PUBLIC EUI_RENDER_BACKEND_OPENGL=1)
     target_link_libraries(eui_neo PUBLIC glad OpenGL::GL)
+elseif(EUI_RESOLVED_RENDER_BACKEND STREQUAL "vulkan")
+    target_compile_definitions(eui_neo PUBLIC EUI_RENDER_BACKEND_VULKAN=1)
+    target_link_libraries(eui_neo PUBLIC Vulkan::Vulkan)
 endif()
 
 if(EUI_WINDOW_BACKEND STREQUAL "sdl2")

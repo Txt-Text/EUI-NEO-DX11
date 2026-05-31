@@ -44,7 +44,7 @@ bool loadOpenGLFunctions() {
 
 } // namespace
 
-OpenGLRenderBackend::OpenGLRenderBackend(core::window::Handle window, OpenGLRenderBackend* shareContext)
+OpenGLRenderBackend::OpenGLRenderBackend(core::window::Handle window, RenderBackend* shareContext)
     : window_(window), shareContext_(shareContext) {}
 
 OpenGLRenderBackend::~OpenGLRenderBackend() {

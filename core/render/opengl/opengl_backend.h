@@ -7,14 +7,14 @@ namespace core::render::opengl {
 
 class OpenGLRenderBackend final : public RenderBackend {
 public:
-    explicit OpenGLRenderBackend(core::window::Handle window, OpenGLRenderBackend* shareContext = nullptr);
+    explicit OpenGLRenderBackend(core::window::Handle window, RenderBackend* shareContext = nullptr);
     ~OpenGLRenderBackend() override;
 
     OpenGLRenderBackend(const OpenGLRenderBackend&) = delete;
     OpenGLRenderBackend& operator=(const OpenGLRenderBackend&) = delete;
 
-    bool initialize();
-    bool valid() const;
+    bool initialize() override;
+    bool valid() const override;
 
     void makeCurrent() override;
     void beginFrame(const RenderSurface& surface) override;
@@ -30,7 +30,7 @@ public:
 
 private:
     core::window::Handle window_ = nullptr;
-    OpenGLRenderBackend* shareContext_ = nullptr;
+    RenderBackend* shareContext_ = nullptr;
     void* context_ = nullptr;
     bool initialized_ = false;
     unsigned int cacheFramebuffer_ = 0;

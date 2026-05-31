@@ -22,7 +22,7 @@
 #include "core/input/input_state.h"
 #include "core/platform/platform.h"
 #include "core/platform/native_bridge.h"
-#include "core/render/opengl/opengl_backend.h"
+#include "core/render/render_backend.h"
 #include "core/window/window_backend.h"
 
 #include <algorithm>
@@ -43,7 +43,7 @@ struct ManagedWindow {
     bool closeRequested = false;
     SDL_Window* parentWindow = nullptr;
     app::DslWindowRuntime content;
-    std::unique_ptr<core::render::opengl::OpenGLRenderBackend> renderBackend;
+    std::unique_ptr<core::render::RenderBackend> renderBackend;
 };
 
 struct TimerResolutionGuard {
@@ -231,13 +231,13 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
 
 std::unique_ptr<ManagedWindow> createManagedWindow(const app::DslWindowRequest& request,
                                                    SDL_Window* parentWindow,
-                                                   core::render::opengl::OpenGLRenderBackend& shareBackend) {
+                                                   core::render::RenderBackend& shareBackend) {
     core::window::WindowCreateRequest windowRequest;
     windowRequest.width = request.width;
     windowRequest.height = request.height;
     windowRequest.title = request.title.c_str();
     windowRequest.parent = parentWindow;
-    windowRequest.renderApi = core::window::RenderApi::OpenGL;
+    windowRequest.renderApi = core::render::windowRenderApi();
     SDL_Window* window = static_cast<SDL_Window*>(core::window::createWindow(windowRequest));
     if (window == nullptr) {
         return {};
@@ -246,7 +246,11 @@ std::unique_ptr<ManagedWindow> createManagedWindow(const app::DslWindowRequest& 
     auto managed = std::make_unique<ManagedWindow>();
     managed->window = window;
     managed->parentWindow = parentWindow;
-    managed->renderBackend = std::make_unique<core::render::opengl::OpenGLRenderBackend>(window, &shareBackend);
+    managed->renderBackend = core::render::createRenderBackend(window, &shareBackend);
+    if (!managed->renderBackend) {
+        core::window::destroyWindow(window);
+        return {};
+    }
     if (!managed->renderBackend->initialize()) {
         core::window::destroyWindow(window);
         return {};
@@ -294,7 +298,7 @@ void pruneClosedWindows(app::DslWindowManager<ManagedWindow>& windows) {
 
 void createRequestedWindows(app::DslWindowManager<ManagedWindow>& windows,
                             SDL_Window* mainWindow,
-                            core::render::opengl::OpenGLRenderBackend& mainBackend,
+                            core::render::RenderBackend& mainBackend,
                             const std::vector<app::DslWindowRequest>& requests) {
     mainBackend.makeCurrent();
     windows.createPending(requests, [&](const app::DslWindowRequest& request) {
@@ -401,14 +405,19 @@ int main() {
     windowRequest.width = app::initialWindowWidth();
     windowRequest.height = app::initialWindowHeight();
     windowRequest.title = app::windowTitle();
-    windowRequest.renderApi = core::window::RenderApi::OpenGL;
+    windowRequest.renderApi = core::render::windowRenderApi();
     SDL_Window* window = static_cast<SDL_Window*>(core::window::createWindow(windowRequest));
     if (window == nullptr) {
         SDL_Quit();
         return -1;
     }
 
-    auto renderBackend = std::make_unique<core::render::opengl::OpenGLRenderBackend>(window);
+    auto renderBackend = core::render::createRenderBackend(window);
+    if (!renderBackend) {
+        core::window::destroyWindow(window);
+        SDL_Quit();
+        return -1;
+    }
     if (!renderBackend->initialize()) {
         core::window::destroyWindow(window);
         SDL_Quit();
