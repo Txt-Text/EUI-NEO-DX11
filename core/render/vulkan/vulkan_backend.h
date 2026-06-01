@@ -79,6 +79,13 @@ private:
     bool drawRenderCacheResolve(int width, int height);
     VkExtent2D currentRenderExtent() const;
     VkFramebuffer currentFramebuffer() const;
+    void writeColor(float (&target)[4], const core::Color& color);
+    VkShaderModule createShaderModule(VkDevice device, const std::uint32_t* code, std::size_t codeSize);
+    void transitionImageLayout(VkCommandBuffer commandBuffer,
+                               VkImage image,
+                               VkImageLayout oldLayout,
+                               VkImageLayout newLayout);
+    VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight);
     bool ensureRoundedRectPipeline();
     bool ensureBackdropResources(std::uint32_t width, std::uint32_t height);
     bool ensureBackdropDescriptor();
@@ -198,6 +205,7 @@ private:
     std::vector<VkBuffer> pendingUploadBuffers_;
     std::vector<VkDeviceMemory> pendingUploadMemories_;
     std::vector<TextureResource*> pendingTextureDeletes_;
+
 };
 
 } // namespace core::render::vulkan
