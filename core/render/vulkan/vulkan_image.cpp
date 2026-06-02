@@ -38,8 +38,7 @@ bool VulkanRenderBackend::updateTexture(TextureHandle handle, const unsigned cha
         return false;
     }
     if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
+        endActiveRenderPass();
     }
 
     if (texture->image == VK_NULL_HANDLE || texture->width != width || texture->height != height || texture->channels != 4) {
@@ -118,7 +117,7 @@ bool VulkanRenderBackend::updateTexture(TextureHandle handle, const unsigned cha
     }
     std::memcpy(mapped, pixels, static_cast<std::size_t>(uploadSize));
 
-    VkCommandBuffer commandBuffer = commandBuffers_[currentImage_];
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
     transitionImageLayout(commandBuffer, texture->image, texture->layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     texture->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
@@ -176,29 +175,18 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
         return;
     }
 
-    if (imageVertexUsed_ + vertexFloatCount > imageVertexCapacity_) {
+    if (imageVertices_.used + vertexFloatCount > imageVertices_.capacity) {
         return;
     }
-    const std::size_t floatOffset = imageVertexUsed_;
-    auto* mappedImageVertices = static_cast<float*>(imageVertexMapped_);
+    const std::size_t floatOffset = imageVertices_.used;
+    auto* mappedImageVertices = static_cast<float*>(imageVertices_.mapped);
     std::memcpy(mappedImageVertices + floatOffset, vertices, vertexFloatCount * sizeof(float));
-    imageVertexUsed_ += vertexFloatCount;
+    imageVertices_.used += vertexFloatCount;
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(windowWidth);
-    viewport.height = static_cast<float>(windowHeight);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffers_[currentImage_], 0, 1, &viewport);
-
-    const core::Rect fullRect{0.0f, 0.0f, static_cast<float>(windowWidth), static_cast<float>(windowHeight)};
-    const VkRect2D scissor = clampScissor(scissorEnabled_ ? scissorRect_ : fullRect, windowWidth, windowHeight);
-    if (scissor.extent.width == 0 || scissor.extent.height == 0) {
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
+    if (!applyDrawViewportAndScissor(windowWidth, windowHeight)) {
         return;
     }
-    vkCmdSetScissor(commandBuffers_[currentImage_], 0, 1, &scissor);
 
     ImagePushConstants constants{};
     constants.windowSize[0] = static_cast<float>(windowWidth);
@@ -211,8 +199,8 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
     constants.flags[0] = radius;
 
     const VkDeviceSize offset = static_cast<VkDeviceSize>(floatOffset * sizeof(float));
-    vkCmdBindPipeline(commandBuffers_[currentImage_], VK_PIPELINE_BIND_POINT_GRAPHICS, imagePipeline_);
-    vkCmdBindDescriptorSets(commandBuffers_[currentImage_],
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, imagePipeline_);
+    vkCmdBindDescriptorSets(commandBuffer,
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             imagePipelineLayout_,
                             0,
@@ -220,14 +208,14 @@ void VulkanRenderBackend::drawTexture(TextureHandle handle,
                             &texture->descriptorSet,
                             0,
                             nullptr);
-    vkCmdBindVertexBuffers(commandBuffers_[currentImage_], 0, 1, &imageVertexBuffer_, &offset);
-    vkCmdPushConstants(commandBuffers_[currentImage_],
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &imageVertices_.buffer, &offset);
+    vkCmdPushConstants(commandBuffer,
                        imagePipelineLayout_,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                        0,
                        sizeof(constants),
                        &constants);
-    vkCmdDraw(commandBuffers_[currentImage_], static_cast<std::uint32_t>(vertexFloatCount / 7), 1, 0, 0);
+    vkCmdDraw(commandBuffer, static_cast<std::uint32_t>(vertexFloatCount / 7), 1, 0, 0);
 }
 
 bool VulkanRenderBackend::ensureImagePipeline() {
@@ -445,34 +433,34 @@ bool VulkanRenderBackend::ensureImageDescriptor(TextureResource& texture) {
 }
 
 bool VulkanRenderBackend::ensureImageVertexBuffer() {
-    if (imageVertexBuffer_ == VK_NULL_HANDLE) {
+    if (imageVertices_.buffer == VK_NULL_HANDLE) {
         const VkDeviceSize size = sizeof(float) * kImageVertexFloatCapacity;
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &imageVertexBuffer_) != VK_SUCCESS) {
+        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &imageVertices_.buffer) != VK_SUCCESS) {
             return false;
         }
 
         VkMemoryRequirements memoryRequirements{};
-        vkGetBufferMemoryRequirements(device_, imageVertexBuffer_, &memoryRequirements);
+        vkGetBufferMemoryRequirements(device_, imageVertices_.buffer, &memoryRequirements);
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memoryRequirements.size;
         allocInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (allocInfo.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
-            vkAllocateMemory(device_, &allocInfo, nullptr, &imageVertexMemory_) != VK_SUCCESS ||
-            vkBindBufferMemory(device_, imageVertexBuffer_, imageVertexMemory_, 0) != VK_SUCCESS ||
-            vkMapMemory(device_, imageVertexMemory_, 0, size, 0, &imageVertexMapped_) != VK_SUCCESS) {
+            vkAllocateMemory(device_, &allocInfo, nullptr, &imageVertices_.memory) != VK_SUCCESS ||
+            vkBindBufferMemory(device_, imageVertices_.buffer, imageVertices_.memory, 0) != VK_SUCCESS ||
+            vkMapMemory(device_, imageVertices_.memory, 0, size, 0, &imageVertices_.mapped) != VK_SUCCESS) {
             destroyImageResources();
             return false;
         }
-        imageVertexCapacity_ = kImageVertexFloatCapacity;
+        imageVertices_.capacity = kImageVertexFloatCapacity;
     }
-    return imageVertexMapped_ != nullptr && imageVertexCapacity_ >= 42;
+    return imageVertices_.mapped != nullptr && imageVertices_.capacity >= 42;
 }
 
 void VulkanRenderBackend::destroyImagePipeline() {
@@ -488,27 +476,27 @@ void VulkanRenderBackend::destroyImagePipeline() {
 
 void VulkanRenderBackend::destroyImageResources() {
     if (device_ == VK_NULL_HANDLE) {
-        imageVertexBuffer_ = VK_NULL_HANDLE;
-        imageVertexMemory_ = VK_NULL_HANDLE;
-        imageVertexMapped_ = nullptr;
-        imageVertexCapacity_ = 0;
-        imageVertexUsed_ = 0;
+        imageVertices_.buffer = VK_NULL_HANDLE;
+        imageVertices_.memory = VK_NULL_HANDLE;
+        imageVertices_.mapped = nullptr;
+        imageVertices_.capacity = 0;
+        imageVertices_.used = 0;
         return;
     }
-    if (imageVertexMemory_ != VK_NULL_HANDLE && imageVertexMapped_ != nullptr) {
-        vkUnmapMemory(device_, imageVertexMemory_);
-        imageVertexMapped_ = nullptr;
+    if (imageVertices_.memory != VK_NULL_HANDLE && imageVertices_.mapped != nullptr) {
+        vkUnmapMemory(device_, imageVertices_.memory);
+        imageVertices_.mapped = nullptr;
     }
-    if (imageVertexBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, imageVertexBuffer_, nullptr);
-        imageVertexBuffer_ = VK_NULL_HANDLE;
+    if (imageVertices_.buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, imageVertices_.buffer, nullptr);
+        imageVertices_.buffer = VK_NULL_HANDLE;
     }
-    if (imageVertexMemory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, imageVertexMemory_, nullptr);
-        imageVertexMemory_ = VK_NULL_HANDLE;
+    if (imageVertices_.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, imageVertices_.memory, nullptr);
+        imageVertices_.memory = VK_NULL_HANDLE;
     }
-    imageVertexCapacity_ = 0;
-    imageVertexUsed_ = 0;
+    imageVertices_.capacity = 0;
+    imageVertices_.used = 0;
 }
 
 } // namespace core::render::vulkan

@@ -62,6 +62,24 @@ private:
         std::uint64_t generation = 0;
     };
 
+    struct MappedBuffer {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        void* mapped = nullptr;
+        std::size_t capacity = 0;
+        std::size_t used = 0;
+    };
+
+    struct UploadArena {
+        VkBuffer buffer = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        void* mapped = nullptr;
+        VkDeviceSize capacity = 0;
+        VkDeviceSize used = 0;
+        std::vector<VkBuffer> pendingBuffers;
+        std::vector<VkDeviceMemory> pendingMemories;
+    };
+
     bool createInstance();
     bool createSurface();
     bool pickDevice();
@@ -80,6 +98,10 @@ private:
     bool drawRenderCacheResolve(int width, int height);
     VkExtent2D currentRenderExtent() const;
     VkFramebuffer currentFramebuffer() const;
+    VkCommandBuffer currentCommandBuffer() const;
+    bool hasCurrentCommandBuffer() const;
+    void endActiveRenderPass();
+    bool applyDrawViewportAndScissor(int windowWidth, int windowHeight);
     void writeColor(float (&target)[4], const core::Color& color);
     VkShaderModule createShaderModule(VkDevice device, const std::uint32_t* code, std::size_t codeSize);
     void transitionImageLayout(VkCommandBuffer commandBuffer,
@@ -163,11 +185,7 @@ private:
     VkSampler backdropSampler_ = VK_NULL_HANDLE;
     VkImageLayout backdropImageLayout_ = VK_IMAGE_LAYOUT_UNDEFINED;
     VkExtent2D backdropExtent_{};
-    VkBuffer primitiveVertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory primitiveVertexMemory_ = VK_NULL_HANDLE;
-    void* primitiveVertexMapped_ = nullptr;
-    std::size_t primitiveVertexCapacity_ = 0;
-    std::size_t primitiveVertexUsed_ = 0;
+    MappedBuffer primitiveVertices_;
 
     VkImage renderCacheImage_ = VK_NULL_HANDLE;
     VkDeviceMemory renderCacheMemory_ = VK_NULL_HANDLE;
@@ -192,11 +210,7 @@ private:
     TextureResource textGrayAtlas_;
     TextureResource textColorAtlas_;
     bool textDescriptorDirty_ = true;
-    VkBuffer textVertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory textVertexMemory_ = VK_NULL_HANDLE;
-    void* textVertexMapped_ = nullptr;
-    std::size_t textVertexCapacity_ = 0;
-    std::size_t textVertexUsed_ = 0;
+    MappedBuffer textVertices_;
     VkDescriptorSetLayout imageDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool imageDescriptorPool_ = VK_NULL_HANDLE;
     std::vector<VkDescriptorPool> imageDescriptorPools_;
@@ -204,18 +218,8 @@ private:
     std::uint32_t imageDescriptorPoolCapacity_ = 0;
     VkPipelineLayout imagePipelineLayout_ = VK_NULL_HANDLE;
     VkPipeline imagePipeline_ = VK_NULL_HANDLE;
-    VkBuffer imageVertexBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory imageVertexMemory_ = VK_NULL_HANDLE;
-    void* imageVertexMapped_ = nullptr;
-    std::size_t imageVertexCapacity_ = 0;
-    std::size_t imageVertexUsed_ = 0;
-    VkBuffer uploadBuffer_ = VK_NULL_HANDLE;
-    VkDeviceMemory uploadMemory_ = VK_NULL_HANDLE;
-    void* uploadMapped_ = nullptr;
-    VkDeviceSize uploadCapacity_ = 0;
-    VkDeviceSize uploadUsed_ = 0;
-    std::vector<VkBuffer> pendingUploadBuffers_;
-    std::vector<VkDeviceMemory> pendingUploadMemories_;
+    MappedBuffer imageVertices_;
+    UploadArena uploadArena_;
     std::vector<TextureResource*> pendingTextureDeletes_;
 
 };

@@ -34,8 +34,7 @@ void VulkanRenderBackend::drawText(const TextDrawCommand& command, int windowWid
 
     const bool uploadNeeded = textAtlasNeedsUpload(command.grayAtlas) || textAtlasNeedsUpload(command.colorAtlas);
     if (uploadNeeded && renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
+        endActiveRenderPass();
     }
 
     if (!ensureTextAtlas(command.grayAtlas)) {
@@ -54,26 +53,15 @@ void VulkanRenderBackend::drawText(const TextDrawCommand& command, int windowWid
         return;
     }
 
-    const std::size_t floatOffset = textVertexUsed_;
-    auto* mappedTextVertices = static_cast<float*>(textVertexMapped_);
+    const std::size_t floatOffset = textVertices_.used;
+    auto* mappedTextVertices = static_cast<float*>(textVertices_.mapped);
     std::memcpy(mappedTextVertices + floatOffset, command.vertices, command.vertexFloatCount * sizeof(float));
-    textVertexUsed_ += command.vertexFloatCount;
+    textVertices_.used += command.vertexFloatCount;
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(windowWidth);
-    viewport.height = static_cast<float>(windowHeight);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffers_[currentImage_], 0, 1, &viewport);
-
-    const core::Rect fullRect{0.0f, 0.0f, static_cast<float>(windowWidth), static_cast<float>(windowHeight)};
-    const VkRect2D scissor = clampScissor(scissorEnabled_ ? scissorRect_ : fullRect, windowWidth, windowHeight);
-    if (scissor.extent.width == 0 || scissor.extent.height == 0) {
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
+    if (!applyDrawViewportAndScissor(windowWidth, windowHeight)) {
         return;
     }
-    vkCmdSetScissor(commandBuffers_[currentImage_], 0, 1, &scissor);
 
     TextPushConstants constants{};
     constants.windowSize[0] = static_cast<float>(windowWidth);
@@ -81,8 +69,8 @@ void VulkanRenderBackend::drawText(const TextDrawCommand& command, int windowWid
     writeColor(constants.color, command.color);
 
     const VkDeviceSize offset = static_cast<VkDeviceSize>(floatOffset * sizeof(float));
-    vkCmdBindPipeline(commandBuffers_[currentImage_], VK_PIPELINE_BIND_POINT_GRAPHICS, textPipeline_);
-    vkCmdBindDescriptorSets(commandBuffers_[currentImage_],
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, textPipeline_);
+    vkCmdBindDescriptorSets(commandBuffer,
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             textPipelineLayout_,
                             0,
@@ -90,14 +78,14 @@ void VulkanRenderBackend::drawText(const TextDrawCommand& command, int windowWid
                             &textDescriptorSet_,
                             0,
                             nullptr);
-    vkCmdBindVertexBuffers(commandBuffers_[currentImage_], 0, 1, &textVertexBuffer_, &offset);
-    vkCmdPushConstants(commandBuffers_[currentImage_],
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &textVertices_.buffer, &offset);
+    vkCmdPushConstants(commandBuffer,
                        textPipelineLayout_,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                        0,
                        sizeof(constants),
                        &constants);
-    vkCmdDraw(commandBuffers_[currentImage_], static_cast<std::uint32_t>(command.vertexFloatCount / 5), 1, 0, 0);
+    vkCmdDraw(commandBuffer, static_cast<std::uint32_t>(command.vertexFloatCount / 5), 1, 0, 0);
 }
 
 bool VulkanRenderBackend::ensureTextPipeline() {
@@ -364,7 +352,7 @@ bool VulkanRenderBackend::ensureTextAtlas(const TextAtlasPageData& page) {
     }
     std::memcpy(mapped, page.pixels, static_cast<std::size_t>(uploadSize));
 
-    VkCommandBuffer commandBuffer = commandBuffers_[currentImage_];
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
     transitionImageLayout(commandBuffer, texture.image, texture.layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     texture.layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
@@ -448,19 +436,19 @@ bool VulkanRenderBackend::ensureTextVertexBuffer(std::size_t floatCount) {
     if (floatCount == 0 || floatCount > kTextVertexFloatCapacity) {
         return false;
     }
-    if (textVertexBuffer_ == VK_NULL_HANDLE) {
+    if (textVertices_.buffer == VK_NULL_HANDLE) {
         const VkDeviceSize size = static_cast<VkDeviceSize>(kTextVertexFloatCapacity * sizeof(float));
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &textVertexBuffer_) != VK_SUCCESS) {
+        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &textVertices_.buffer) != VK_SUCCESS) {
             return false;
         }
 
         VkMemoryRequirements memoryRequirements{};
-        vkGetBufferMemoryRequirements(device_, textVertexBuffer_, &memoryRequirements);
+        vkGetBufferMemoryRequirements(device_, textVertices_.buffer, &memoryRequirements);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -468,15 +456,15 @@ bool VulkanRenderBackend::ensureTextVertexBuffer(std::size_t floatCount) {
         allocInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (allocInfo.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
-            vkAllocateMemory(device_, &allocInfo, nullptr, &textVertexMemory_) != VK_SUCCESS ||
-            vkBindBufferMemory(device_, textVertexBuffer_, textVertexMemory_, 0) != VK_SUCCESS ||
-            vkMapMemory(device_, textVertexMemory_, 0, size, 0, &textVertexMapped_) != VK_SUCCESS) {
+            vkAllocateMemory(device_, &allocInfo, nullptr, &textVertices_.memory) != VK_SUCCESS ||
+            vkBindBufferMemory(device_, textVertices_.buffer, textVertices_.memory, 0) != VK_SUCCESS ||
+            vkMapMemory(device_, textVertices_.memory, 0, size, 0, &textVertices_.mapped) != VK_SUCCESS) {
             destroyTextResources();
             return false;
         }
-        textVertexCapacity_ = kTextVertexFloatCapacity;
+        textVertices_.capacity = kTextVertexFloatCapacity;
     }
-    return textVertexMapped_ != nullptr && textVertexUsed_ + floatCount <= textVertexCapacity_;
+    return textVertices_.mapped != nullptr && textVertices_.used + floatCount <= textVertices_.capacity;
 }
 
 void VulkanRenderBackend::destroyTextPipeline() {
@@ -502,30 +490,30 @@ void VulkanRenderBackend::destroyTextPipeline() {
 
 void VulkanRenderBackend::destroyTextResources() {
     if (device_ == VK_NULL_HANDLE) {
-        textVertexBuffer_ = VK_NULL_HANDLE;
-        textVertexMemory_ = VK_NULL_HANDLE;
-        textVertexMapped_ = nullptr;
-        textVertexCapacity_ = 0;
-        textVertexUsed_ = 0;
+        textVertices_.buffer = VK_NULL_HANDLE;
+        textVertices_.memory = VK_NULL_HANDLE;
+        textVertices_.mapped = nullptr;
+        textVertices_.capacity = 0;
+        textVertices_.used = 0;
         textGrayAtlas_ = {};
         textColorAtlas_ = {};
         textDescriptorDirty_ = true;
         return;
     }
-    if (textVertexMemory_ != VK_NULL_HANDLE && textVertexMapped_ != nullptr) {
-        vkUnmapMemory(device_, textVertexMemory_);
-        textVertexMapped_ = nullptr;
+    if (textVertices_.memory != VK_NULL_HANDLE && textVertices_.mapped != nullptr) {
+        vkUnmapMemory(device_, textVertices_.memory);
+        textVertices_.mapped = nullptr;
     }
-    if (textVertexBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, textVertexBuffer_, nullptr);
-        textVertexBuffer_ = VK_NULL_HANDLE;
+    if (textVertices_.buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, textVertices_.buffer, nullptr);
+        textVertices_.buffer = VK_NULL_HANDLE;
     }
-    if (textVertexMemory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, textVertexMemory_, nullptr);
-        textVertexMemory_ = VK_NULL_HANDLE;
+    if (textVertices_.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, textVertices_.memory, nullptr);
+        textVertices_.memory = VK_NULL_HANDLE;
     }
-    textVertexCapacity_ = 0;
-    textVertexUsed_ = 0;
+    textVertices_.capacity = 0;
+    textVertices_.used = 0;
     destroyTextureResource(textGrayAtlas_);
     destroyTextureResource(textColorAtlas_);
     textDescriptorDirty_ = true;

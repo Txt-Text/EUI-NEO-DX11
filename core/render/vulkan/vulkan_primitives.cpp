@@ -60,12 +60,9 @@ void VulkanRenderBackend::prepareBackdropBlur(const core::Rect& bounds, float bl
     if (!frameRecorded_) {
         recordClearPass(clearColor_);
     }
-    if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
-    }
+    endActiveRenderPass();
 
-    VkCommandBuffer commandBuffer = commandBuffers_[currentImage_];
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
     if (sourceIsCache) {
         transitionRenderCacheImage(VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     } else {
@@ -117,26 +114,15 @@ void VulkanRenderBackend::drawRoundedRect(const RoundedRectDrawCommand& command,
         return;
     }
 
-    const std::size_t vertexOffset = primitiveVertexUsed_;
-    auto* mappedVertices = static_cast<PrimitiveGeometryVertex*>(primitiveVertexMapped_);
+    const std::size_t vertexOffset = primitiveVertices_.used;
+    auto* mappedVertices = static_cast<PrimitiveGeometryVertex*>(primitiveVertices_.mapped);
     std::copy(command.vertices.begin(), command.vertices.end(), mappedVertices + vertexOffset);
-    primitiveVertexUsed_ += command.vertices.size();
+    primitiveVertices_.used += command.vertices.size();
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(windowWidth);
-    viewport.height = static_cast<float>(windowHeight);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffers_[currentImage_], 0, 1, &viewport);
-
-    const core::Rect fullRect{0.0f, 0.0f, static_cast<float>(windowWidth), static_cast<float>(windowHeight)};
-    const VkRect2D scissor = clampScissor(scissorEnabled_ ? scissorRect_ : fullRect, windowWidth, windowHeight);
-    if (scissor.extent.width == 0 || scissor.extent.height == 0) {
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
+    if (!applyDrawViewportAndScissor(windowWidth, windowHeight)) {
         return;
     }
-    vkCmdSetScissor(commandBuffers_[currentImage_], 0, 1, &scissor);
 
     RoundedRectPushConstants constants{};
     constants.windowAndShape[0] = static_cast<float>(windowWidth);
@@ -160,8 +146,8 @@ void VulkanRenderBackend::drawRoundedRect(const RoundedRectDrawCommand& command,
     constants.flags2[2] = (!command.shadowPass && command.backdropBlur > 0.0f && backdropReady_) ? 1.0f : 0.0f;
 
     const VkDeviceSize bufferOffset = static_cast<VkDeviceSize>(vertexOffset * sizeof(PrimitiveGeometryVertex));
-    vkCmdBindPipeline(commandBuffers_[currentImage_], VK_PIPELINE_BIND_POINT_GRAPHICS, roundedRectPipeline_);
-    vkCmdBindDescriptorSets(commandBuffers_[currentImage_],
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, roundedRectPipeline_);
+    vkCmdBindDescriptorSets(commandBuffer,
                             VK_PIPELINE_BIND_POINT_GRAPHICS,
                             roundedRectPipelineLayout_,
                             0,
@@ -169,14 +155,14 @@ void VulkanRenderBackend::drawRoundedRect(const RoundedRectDrawCommand& command,
                             &roundedRectDescriptorSet_,
                             0,
                             nullptr);
-    vkCmdBindVertexBuffers(commandBuffers_[currentImage_], 0, 1, &primitiveVertexBuffer_, &bufferOffset);
-    vkCmdPushConstants(commandBuffers_[currentImage_],
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &primitiveVertices_.buffer, &bufferOffset);
+    vkCmdPushConstants(commandBuffer,
                        roundedRectPipelineLayout_,
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                        0,
                        sizeof(constants),
                        &constants);
-    vkCmdDraw(commandBuffers_[currentImage_], static_cast<std::uint32_t>(command.vertices.size()), 1, 0, 0);
+    vkCmdDraw(commandBuffer, static_cast<std::uint32_t>(command.vertices.size()), 1, 0, 0);
 }
 
 bool VulkanRenderBackend::ensureRoundedRectPipeline() {
@@ -471,7 +457,7 @@ void VulkanRenderBackend::initializeBackdropImageIfNeeded() {
         return;
     }
 
-    VkCommandBuffer commandBuffer = commandBuffers_[currentImage_];
+    VkCommandBuffer commandBuffer = currentCommandBuffer();
     transitionImageLayout(commandBuffer, backdropImage_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     backdropImageLayout_ = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
@@ -490,19 +476,19 @@ bool VulkanRenderBackend::ensurePrimitiveVertexBuffer(std::size_t vertexCount) {
     if (vertexCount == 0 || vertexCount > kPrimitiveVertexCapacity) {
         return false;
     }
-    if (primitiveVertexBuffer_ == VK_NULL_HANDLE) {
+    if (primitiveVertices_.buffer == VK_NULL_HANDLE) {
         const VkDeviceSize size = static_cast<VkDeviceSize>(kPrimitiveVertexCapacity * sizeof(PrimitiveGeometryVertex));
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = size;
         bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &primitiveVertexBuffer_) != VK_SUCCESS) {
+        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &primitiveVertices_.buffer) != VK_SUCCESS) {
             return false;
         }
 
         VkMemoryRequirements memoryRequirements{};
-        vkGetBufferMemoryRequirements(device_, primitiveVertexBuffer_, &memoryRequirements);
+        vkGetBufferMemoryRequirements(device_, primitiveVertices_.buffer, &memoryRequirements);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -510,15 +496,15 @@ bool VulkanRenderBackend::ensurePrimitiveVertexBuffer(std::size_t vertexCount) {
         allocInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         if (allocInfo.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
-            vkAllocateMemory(device_, &allocInfo, nullptr, &primitiveVertexMemory_) != VK_SUCCESS ||
-            vkBindBufferMemory(device_, primitiveVertexBuffer_, primitiveVertexMemory_, 0) != VK_SUCCESS ||
-            vkMapMemory(device_, primitiveVertexMemory_, 0, size, 0, &primitiveVertexMapped_) != VK_SUCCESS) {
+            vkAllocateMemory(device_, &allocInfo, nullptr, &primitiveVertices_.memory) != VK_SUCCESS ||
+            vkBindBufferMemory(device_, primitiveVertices_.buffer, primitiveVertices_.memory, 0) != VK_SUCCESS ||
+            vkMapMemory(device_, primitiveVertices_.memory, 0, size, 0, &primitiveVertices_.mapped) != VK_SUCCESS) {
             destroyPrimitiveVertexBuffer();
             return false;
         }
-        primitiveVertexCapacity_ = kPrimitiveVertexCapacity;
+        primitiveVertices_.capacity = kPrimitiveVertexCapacity;
     }
-    return primitiveVertexMapped_ != nullptr && primitiveVertexUsed_ + vertexCount <= primitiveVertexCapacity_;
+    return primitiveVertices_.mapped != nullptr && primitiveVertices_.used + vertexCount <= primitiveVertices_.capacity;
 }
 
 void VulkanRenderBackend::destroyRoundedRectPipeline() {
@@ -580,27 +566,27 @@ void VulkanRenderBackend::destroyBackdropDescriptorPool() {
 
 void VulkanRenderBackend::destroyPrimitiveVertexBuffer() {
     if (device_ == VK_NULL_HANDLE) {
-        primitiveVertexBuffer_ = VK_NULL_HANDLE;
-        primitiveVertexMemory_ = VK_NULL_HANDLE;
-        primitiveVertexMapped_ = nullptr;
-        primitiveVertexCapacity_ = 0;
-        primitiveVertexUsed_ = 0;
+        primitiveVertices_.buffer = VK_NULL_HANDLE;
+        primitiveVertices_.memory = VK_NULL_HANDLE;
+        primitiveVertices_.mapped = nullptr;
+        primitiveVertices_.capacity = 0;
+        primitiveVertices_.used = 0;
         return;
     }
-    if (primitiveVertexMemory_ != VK_NULL_HANDLE && primitiveVertexMapped_ != nullptr) {
-        vkUnmapMemory(device_, primitiveVertexMemory_);
-        primitiveVertexMapped_ = nullptr;
+    if (primitiveVertices_.memory != VK_NULL_HANDLE && primitiveVertices_.mapped != nullptr) {
+        vkUnmapMemory(device_, primitiveVertices_.memory);
+        primitiveVertices_.mapped = nullptr;
     }
-    if (primitiveVertexBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, primitiveVertexBuffer_, nullptr);
-        primitiveVertexBuffer_ = VK_NULL_HANDLE;
+    if (primitiveVertices_.buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, primitiveVertices_.buffer, nullptr);
+        primitiveVertices_.buffer = VK_NULL_HANDLE;
     }
-    if (primitiveVertexMemory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, primitiveVertexMemory_, nullptr);
-        primitiveVertexMemory_ = VK_NULL_HANDLE;
+    if (primitiveVertices_.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, primitiveVertices_.memory, nullptr);
+        primitiveVertices_.memory = VK_NULL_HANDLE;
     }
-    primitiveVertexCapacity_ = 0;
-    primitiveVertexUsed_ = 0;
+    primitiveVertices_.capacity = 0;
+    primitiveVertices_.used = 0;
 }
 
 } // namespace core::render::vulkan

@@ -192,6 +192,48 @@ VkRect2D VulkanRenderBackend::clampScissor(const core::Rect& rect, int windowWid
     return result;
 }
 
+VkCommandBuffer VulkanRenderBackend::currentCommandBuffer() const {
+    if (!hasCurrentCommandBuffer()) {
+        return VK_NULL_HANDLE;
+    }
+    return commandBuffers_[currentImage_];
+}
+
+bool VulkanRenderBackend::hasCurrentCommandBuffer() const {
+    return currentImage_ < commandBuffers_.size();
+}
+
+void VulkanRenderBackend::endActiveRenderPass() {
+    if (!renderPassActive_ || !hasCurrentCommandBuffer()) {
+        return;
+    }
+    vkCmdEndRenderPass(currentCommandBuffer());
+    renderPassActive_ = false;
+}
+
+bool VulkanRenderBackend::applyDrawViewportAndScissor(int windowWidth, int windowHeight) {
+    if (!hasCurrentCommandBuffer() || windowWidth <= 0 || windowHeight <= 0) {
+        return false;
+    }
+
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(windowWidth);
+    viewport.height = static_cast<float>(windowHeight);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(currentCommandBuffer(), 0, 1, &viewport);
+
+    const core::Rect fullRect{0.0f, 0.0f, static_cast<float>(windowWidth), static_cast<float>(windowHeight)};
+    const VkRect2D scissor = clampScissor(scissorEnabled_ ? scissorRect_ : fullRect, windowWidth, windowHeight);
+    if (scissor.extent.width == 0 || scissor.extent.height == 0) {
+        return false;
+    }
+    vkCmdSetScissor(currentCommandBuffer(), 0, 1, &scissor);
+    return true;
+}
+
 VulkanRenderBackend::VulkanRenderBackend(core::window::Handle window, RenderBackend*) : window_(window) {}
 
 VulkanRenderBackend::~VulkanRenderBackend() {
@@ -231,7 +273,7 @@ void VulkanRenderBackend::makeCurrent() {
     if (device_ == VK_NULL_HANDLE || frameActive_ || inFlight_ == VK_NULL_HANDLE) {
         return;
     }
-    if (pendingUploadBuffers_.empty() && pendingTextureDeletes_.empty() && uploadBuffer_ == VK_NULL_HANDLE) {
+    if (uploadArena_.pendingBuffers.empty() && pendingTextureDeletes_.empty() && uploadArena_.buffer == VK_NULL_HANDLE) {
         return;
     }
     if (vkGetFenceStatus(device_, inFlight_) == VK_SUCCESS) {
@@ -277,9 +319,9 @@ void VulkanRenderBackend::beginFrame(const RenderSurface& surface) {
     renderPassActive_ = false;
     renderingToCache_ = false;
     backdropReady_ = false;
-    primitiveVertexUsed_ = 0;
-    textVertexUsed_ = 0;
-    imageVertexUsed_ = 0;
+    primitiveVertices_.used = 0;
+    textVertices_.used = 0;
+    imageVertices_.used = 0;
 }
 
 void VulkanRenderBackend::present() {
@@ -289,10 +331,7 @@ void VulkanRenderBackend::present() {
     if (!frameRecorded_) {
         recordClearPass(clearColor_);
     }
-    if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
-    }
+    endActiveRenderPass();
     transitionSwapchainImage(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     vkEndCommandBuffer(commandBuffers_[currentImage_]);
 
@@ -860,12 +899,12 @@ bool VulkanRenderBackend::createUploadBuffer(VkDeviceSize capacity) {
     bufferInfo.size = capacity;
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    if (vkCreateBuffer(device_, &bufferInfo, nullptr, &uploadBuffer_) != VK_SUCCESS) {
+    if (vkCreateBuffer(device_, &bufferInfo, nullptr, &uploadArena_.buffer) != VK_SUCCESS) {
         return false;
     }
 
     VkMemoryRequirements memoryRequirements{};
-    vkGetBufferMemoryRequirements(device_, uploadBuffer_, &memoryRequirements);
+    vkGetBufferMemoryRequirements(device_, uploadArena_.buffer, &memoryRequirements);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -873,15 +912,15 @@ bool VulkanRenderBackend::createUploadBuffer(VkDeviceSize capacity) {
     allocInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     if (allocInfo.memoryTypeIndex == std::numeric_limits<std::uint32_t>::max() ||
-        vkAllocateMemory(device_, &allocInfo, nullptr, &uploadMemory_) != VK_SUCCESS ||
-        vkBindBufferMemory(device_, uploadBuffer_, uploadMemory_, 0) != VK_SUCCESS ||
-        vkMapMemory(device_, uploadMemory_, 0, capacity, 0, &uploadMapped_) != VK_SUCCESS) {
+        vkAllocateMemory(device_, &allocInfo, nullptr, &uploadArena_.memory) != VK_SUCCESS ||
+        vkBindBufferMemory(device_, uploadArena_.buffer, uploadArena_.memory, 0) != VK_SUCCESS ||
+        vkMapMemory(device_, uploadArena_.memory, 0, capacity, 0, &uploadArena_.mapped) != VK_SUCCESS) {
         destroyUploadBuffer();
         return false;
     }
 
-    uploadCapacity_ = capacity;
-    uploadUsed_ = 0;
+    uploadArena_.capacity = capacity;
+    uploadArena_.used = 0;
     return true;
 }
 
@@ -896,19 +935,19 @@ bool VulkanRenderBackend::allocateUploadRegion(VkDeviceSize size, VkBuffer& buff
         return (value + alignment - 1) & ~(alignment - 1);
     };
 
-    VkDeviceSize alignedUsed = alignUp(uploadUsed_, kUploadAlignment);
-    if (uploadBuffer_ == VK_NULL_HANDLE || alignedUsed + size > uploadCapacity_) {
-        if (uploadBuffer_ != VK_NULL_HANDLE) {
-            if (uploadMapped_ != nullptr) {
-                vkUnmapMemory(device_, uploadMemory_);
-                uploadMapped_ = nullptr;
+    VkDeviceSize alignedUsed = alignUp(uploadArena_.used, kUploadAlignment);
+    if (uploadArena_.buffer == VK_NULL_HANDLE || alignedUsed + size > uploadArena_.capacity) {
+        if (uploadArena_.buffer != VK_NULL_HANDLE) {
+            if (uploadArena_.mapped != nullptr) {
+                vkUnmapMemory(device_, uploadArena_.memory);
+                uploadArena_.mapped = nullptr;
             }
-            pendingUploadBuffers_.push_back(uploadBuffer_);
-            pendingUploadMemories_.push_back(uploadMemory_);
-            uploadBuffer_ = VK_NULL_HANDLE;
-            uploadMemory_ = VK_NULL_HANDLE;
-            uploadCapacity_ = 0;
-            uploadUsed_ = 0;
+            uploadArena_.pendingBuffers.push_back(uploadArena_.buffer);
+            uploadArena_.pendingMemories.push_back(uploadArena_.memory);
+            uploadArena_.buffer = VK_NULL_HANDLE;
+            uploadArena_.memory = VK_NULL_HANDLE;
+            uploadArena_.capacity = 0;
+            uploadArena_.used = 0;
         }
 
         VkDeviceSize capacity = kInitialUploadCapacity;
@@ -921,36 +960,36 @@ bool VulkanRenderBackend::allocateUploadRegion(VkDeviceSize size, VkBuffer& buff
         alignedUsed = 0;
     }
 
-    buffer = uploadBuffer_;
+    buffer = uploadArena_.buffer;
     offset = alignedUsed;
-    mapped = static_cast<unsigned char*>(uploadMapped_) + static_cast<std::size_t>(offset);
-    uploadUsed_ = alignedUsed + size;
+    mapped = static_cast<unsigned char*>(uploadArena_.mapped) + static_cast<std::size_t>(offset);
+    uploadArena_.used = alignedUsed + size;
     return mapped != nullptr;
 }
 
 void VulkanRenderBackend::destroyUploadBuffer() {
     if (device_ == VK_NULL_HANDLE) {
-        uploadBuffer_ = VK_NULL_HANDLE;
-        uploadMemory_ = VK_NULL_HANDLE;
-        uploadMapped_ = nullptr;
-        uploadCapacity_ = 0;
-        uploadUsed_ = 0;
+        uploadArena_.buffer = VK_NULL_HANDLE;
+        uploadArena_.memory = VK_NULL_HANDLE;
+        uploadArena_.mapped = nullptr;
+        uploadArena_.capacity = 0;
+        uploadArena_.used = 0;
         return;
     }
-    if (uploadMemory_ != VK_NULL_HANDLE && uploadMapped_ != nullptr) {
-        vkUnmapMemory(device_, uploadMemory_);
-        uploadMapped_ = nullptr;
+    if (uploadArena_.memory != VK_NULL_HANDLE && uploadArena_.mapped != nullptr) {
+        vkUnmapMemory(device_, uploadArena_.memory);
+        uploadArena_.mapped = nullptr;
     }
-    if (uploadBuffer_ != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, uploadBuffer_, nullptr);
-        uploadBuffer_ = VK_NULL_HANDLE;
+    if (uploadArena_.buffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, uploadArena_.buffer, nullptr);
+        uploadArena_.buffer = VK_NULL_HANDLE;
     }
-    if (uploadMemory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, uploadMemory_, nullptr);
-        uploadMemory_ = VK_NULL_HANDLE;
+    if (uploadArena_.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, uploadArena_.memory, nullptr);
+        uploadArena_.memory = VK_NULL_HANDLE;
     }
-    uploadCapacity_ = 0;
-    uploadUsed_ = 0;
+    uploadArena_.capacity = 0;
+    uploadArena_.used = 0;
 }
 
 void VulkanRenderBackend::releasePendingTextureDeletes() {
@@ -972,23 +1011,23 @@ void VulkanRenderBackend::releasePendingTextureDeletes() {
 
 void VulkanRenderBackend::releasePendingUploads() {
     if (device_ == VK_NULL_HANDLE) {
-        pendingUploadBuffers_.clear();
-        pendingUploadMemories_.clear();
+        uploadArena_.pendingBuffers.clear();
+        uploadArena_.pendingMemories.clear();
         return;
     }
-    for (VkBuffer buffer : pendingUploadBuffers_) {
+    for (VkBuffer buffer : uploadArena_.pendingBuffers) {
         if (buffer != VK_NULL_HANDLE) {
             vkDestroyBuffer(device_, buffer, nullptr);
         }
     }
-    for (VkDeviceMemory memory : pendingUploadMemories_) {
+    for (VkDeviceMemory memory : uploadArena_.pendingMemories) {
         if (memory != VK_NULL_HANDLE) {
             vkFreeMemory(device_, memory, nullptr);
         }
     }
-    pendingUploadBuffers_.clear();
-    pendingUploadMemories_.clear();
-    uploadUsed_ = 0;
+    uploadArena_.pendingBuffers.clear();
+    uploadArena_.pendingMemories.clear();
+    uploadArena_.used = 0;
     destroyUploadBuffer();
 }
 

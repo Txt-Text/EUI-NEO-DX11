@@ -110,18 +110,12 @@ void VulkanRenderBackend::beginRenderCacheFrame(int, int) {
     if (!frameActive_ || renderCacheFramebuffer_ == VK_NULL_HANDLE) {
         return;
     }
-    if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
-    }
+    endActiveRenderPass();
     renderingToCache_ = true;
 }
 
 void VulkanRenderBackend::endRenderCacheFrame() {
-    if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
-    }
+    endActiveRenderPass();
     renderingToCache_ = false;
 }
 
@@ -131,10 +125,7 @@ void VulkanRenderBackend::blitRenderCache(int width, int height) {
         currentImage_ >= swapchainImages_.size()) {
         return;
     }
-    if (renderPassActive_) {
-        vkCmdEndRenderPass(commandBuffers_[currentImage_]);
-        renderPassActive_ = false;
-    }
+    endActiveRenderPass();
     renderingToCache_ = false;
 
     width = std::min(std::max(1, width), static_cast<int>(std::min(renderCacheExtent_.width, swapchainExtent_.width)));
