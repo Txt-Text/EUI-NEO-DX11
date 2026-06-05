@@ -43,6 +43,7 @@ jobs:
           cp -R site/. _site/
           cp -R docs _site/docs
           cp -R assets _site/assets
+          touch _site/.nojekyll
           perl -0pi -e 's#\.\./docs/#./docs/#g; s#\.\./assets/#./assets/#g' _site/index.html _site/app.js
           test -f _site/index.html
           test -f _site/docs/集成指南.md
