@@ -6,6 +6,7 @@
 #include "core/render/render_surface.h"
 #include "core/window/window_backend.h"
 
+#include <chrono>
 #include <utility>
 
 namespace app {
@@ -89,6 +90,7 @@ public:
             return false;
         }
 
+        const auto renderStart = std::chrono::steady_clock::now();
         renderBackend.beginFrame({
             window,
             core::window::nativeWindowInfo(window),
@@ -99,6 +101,8 @@ public:
         core::render::ScopedRenderBackend scopedRenderBackend(renderBackend);
         app::render(metrics.framebufferWidth, metrics.framebufferHeight, metrics.dpiScale);
         renderBackend.present();
+        const auto renderEnd = std::chrono::steady_clock::now();
+        runner_.recordRenderDuration(std::chrono::duration<double, std::milli>(renderEnd - renderStart).count());
         runner_.markRendered();
         return true;
     }

@@ -6,7 +6,10 @@
 #include "core/platform/platform.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <ctime>
+#include <limits>
 
 namespace app {
 
@@ -21,11 +24,15 @@ struct AppRunner {
     double lastFrameTime = 0.0;
     double lastFrameRateLimit = 0.0;
     double lastRefreshRateUpdate = 0.0;
+    double accumulatedRenderMs = 0.0;
+    int measuredRenderFrames = 0;
+    std::clock_t lastCpuClock = std::clock();
 
     void resetTiming(double now) {
         lastTitleUpdate = now;
         nextFrameTime = now;
         lastFrameTime = now;
+        lastCpuClock = std::clock();
     }
 
     float consumeFrameDelta(double now) {
@@ -87,6 +94,14 @@ struct AppRunner {
         ++renderedFrames;
     }
 
+    void recordRenderDuration(double milliseconds) {
+        if (milliseconds < 0.0 || milliseconds > 10000.0) {
+            return;
+        }
+        accumulatedRenderMs += milliseconds;
+        ++measuredRenderFrames;
+    }
+
     template <typename SetTitleFn>
     void updateFrameTitle(double now, SetTitleFn&& setTitle) {
         if (!showFrameCountInTitle()) {
@@ -97,10 +112,35 @@ struct AppRunner {
             return;
         }
 
-        char title[128];
-        std::snprintf(title, sizeof(title), "%s - %.0f FPS", windowTitle(), renderedFrames / elapsed);
+        const std::clock_t cpuClock = std::clock();
+        const double cpuSeconds = static_cast<double>(cpuClock - lastCpuClock) / static_cast<double>(CLOCKS_PER_SEC);
+        const double cpuPercent = std::max(0.0, cpuSeconds / elapsed * 100.0);
+        const double averageRenderMs = measuredRenderFrames > 0
+            ? accumulatedRenderMs / static_cast<double>(measuredRenderFrames)
+            : std::numeric_limits<double>::quiet_NaN();
+
+        char title[192];
+        if (std::isnan(averageRenderMs)) {
+            std::snprintf(title,
+                          sizeof(title),
+                          "%s - %.0f FPS | CPU %.0f%% | GPU n/a",
+                          windowTitle(),
+                          renderedFrames / elapsed,
+                          cpuPercent);
+        } else {
+            std::snprintf(title,
+                          sizeof(title),
+                          "%s - %.0f FPS | CPU %.0f%% | GPU %.2f ms",
+                          windowTitle(),
+                          renderedFrames / elapsed,
+                          cpuPercent,
+                          averageRenderMs);
+        }
         setTitle(title);
         renderedFrames = 0;
+        accumulatedRenderMs = 0.0;
+        measuredRenderFrames = 0;
+        lastCpuClock = cpuClock;
         lastTitleUpdate = now;
     }
 

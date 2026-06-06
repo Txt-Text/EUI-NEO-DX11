@@ -96,19 +96,12 @@ public:
         const float radius = std::min(style_.radius, std::min(w, h) * 0.33f);
         const float targetX = state.hover ? state.targetX : 0.0f;
         const float targetY = state.hover ? state.targetY : 0.0f;
-        state.currentX += (targetX - state.currentX) * 0.28f;
-        state.currentY += (targetY - state.currentY) * 0.28f;
+        state.currentX = targetX;
+        state.currentY = targetY;
+        const core::Transition noTransformTransition = core::Transition::none();
 
         ui_.stack(id_)
             .size(w, h)
-            .rotateX(state.currentX)
-            .rotateY(state.currentY)
-            .translateZ(state.hover ? 18.0f : 0.0f)
-            .scale(state.hover ? 1.018f : 1.0f)
-            .perspective(520.0f)
-            .transformOrigin(0.5f, 0.5f)
-            .transition(transition_)
-            .animate(core::AnimProperty::Transform)
             .content([&] {
                 ui_.rect(id_ + ".shadow")
                     .x(10.0f)
@@ -116,62 +109,73 @@ public:
                     .size(std::max(1.0f, w - 20.0f), std::max(1.0f, h - 16.0f))
                     .color({0.0f, 0.0f, 0.0f, 0.0f})
                     .radius(radius)
-                    .shadow(26.0f, 0.0f, 18.0f, style_.shadow)
+                    .shadow(16.0f, 0.0f, 10.0f, style_.shadow)
                     .disabled(true)
                     .build();
 
-                ui_.rect(id_ + ".surface")
+                ui_.stack(id_ + ".card")
                     .size(w, h)
-                    .gradient(style_.surfaceTop, style_.surface, core::GradientDirection::Vertical)
-                    .radius(radius)
-                    .border(1.0f, style_.border)
-                    .disabled(true)
-                    .transition(transition_)
-                    .build();
+                    .rotateX(state.currentX)
+                    .rotateY(state.currentY)
+                    .scale(state.hover ? 1.012f : 1.0f)
+                    .perspective(640.0f)
+                    .transformOrigin(0.5f, 0.5f)
+                    .transition(noTransformTransition)
+                    .content([&] {
+                        ui_.rect(id_ + ".surface")
+                            .size(w, h)
+                            .gradient(style_.surfaceTop, style_.surface, core::GradientDirection::Vertical)
+                            .radius(radius)
+                            .border(1.0f, style_.border)
+                            .disabled(true)
+                            .transition(transition_)
+                            .build();
 
-                ui_.text(id_ + ".title")
-                    .x(22.0f)
-                    .y(24.0f)
-                    .size(std::max(1.0f, w - 44.0f), 34.0f)
-                    .text(title_)
-                    .fontSize(24.0f)
-                    .lineHeight(28.0f)
-                    .fontWeight(700)
-                    .color(style_.text)
-                    .build();
+                        ui_.text(id_ + ".title")
+                            .x(22.0f)
+                            .y(24.0f)
+                            .size(std::max(1.0f, w - 44.0f), 34.0f)
+                            .text(title_)
+                            .fontSize(24.0f)
+                            .lineHeight(28.0f)
+                            .fontWeight(700)
+                            .color(style_.text)
+                            .build();
 
-                ui_.text(id_ + ".subtitle")
-                    .x(22.0f)
-                    .y(60.0f)
-                    .size(std::max(1.0f, w - 44.0f), 46.0f)
-                    .text(subtitle_)
-                    .fontSize(14.0f)
-                    .lineHeight(18.0f)
-                    .wrap(true)
-                    .color(style_.muted)
-                    .build();
+                        ui_.text(id_ + ".subtitle")
+                            .x(22.0f)
+                            .y(60.0f)
+                            .size(std::max(1.0f, w - 44.0f), 46.0f)
+                            .text(subtitle_)
+                            .fontSize(14.0f)
+                            .lineHeight(18.0f)
+                            .wrap(true)
+                            .color(style_.muted)
+                            .build();
 
-                ui_.rect(id_ + ".chip")
-                    .x(22.0f)
-                    .y(std::max(106.0f, h - 48.0f))
-                    .size(116.0f, 28.0f)
-                    .color(theme::withAlpha(style_.accent, 0.18f))
-                    .radius(14.0f)
-                    .border(1.0f, theme::withAlpha(style_.accent, 0.30f))
-                    .disabled(true)
-                    .build();
+                        ui_.rect(id_ + ".chip")
+                            .x(22.0f)
+                            .y(std::max(106.0f, h - 48.0f))
+                            .size(116.0f, 28.0f)
+                            .color(theme::withAlpha(style_.accent, 0.18f))
+                            .radius(14.0f)
+                            .border(1.0f, theme::withAlpha(style_.accent, 0.30f))
+                            .disabled(true)
+                            .build();
 
-                ui_.text(id_ + ".chip.text")
-                    .x(22.0f)
-                    .y(std::max(106.0f, h - 48.0f))
-                    .size(116.0f, 28.0f)
-                    .text("pointer tilt")
-                    .fontSize(12.0f)
-                    .lineHeight(14.0f)
-                    .fontWeight(600)
-                    .color(theme::withAlpha(style_.text, 0.90f))
-                    .horizontalAlign(core::HorizontalAlign::Center)
-                    .verticalAlign(core::VerticalAlign::Center)
+                        ui_.text(id_ + ".chip.text")
+                            .x(22.0f)
+                            .y(std::max(106.0f, h - 48.0f))
+                            .size(116.0f, 28.0f)
+                            .text("pointer tilt")
+                            .fontSize(12.0f)
+                            .lineHeight(14.0f)
+                            .fontWeight(600)
+                            .color(theme::withAlpha(style_.text, 0.90f))
+                            .horizontalAlign(core::HorizontalAlign::Center)
+                            .verticalAlign(core::VerticalAlign::Center)
+                            .build();
+                    })
                     .build();
 
                 components::mouseArea(ui_, id_ + ".hit")
@@ -189,9 +193,16 @@ public:
                         TiltCardState& moveState = states()[id];
                         const float nx = std::clamp(event.x / std::max(1.0f, event.bounds.width), 0.0f, 1.0f) - 0.5f;
                         const float ny = std::clamp(event.y / std::max(1.0f, event.bounds.height), 0.0f, 1.0f) - 0.5f;
+                        const float nextY = nx * maxTilt;
+                        const float nextX = -ny * maxTilt;
+                        if (std::fabs(nextX - moveState.targetX) < 0.004f &&
+                            std::fabs(nextY - moveState.targetY) < 0.004f &&
+                            moveState.hover) {
+                            return;
+                        }
                         moveState.hover = true;
-                        moveState.targetY = nx * maxTilt;
-                        moveState.targetX = -ny * maxTilt;
+                        moveState.targetY = nextY;
+                        moveState.targetX = nextX;
                     })
                     .build();
             })
