@@ -14,7 +14,11 @@ struct DslAppConfig {
     eui::Color clearColorValue = {0.16f, 0.18f, 0.20f, 1.0f};
     int windowWidthValue = 800;
     int windowHeightValue = 600;
-    bool showFrameCountInTitleValue = false;
+#ifndef NDEBUG
+    bool showDebugStatsInTitleValue = true;
+#else
+    bool showDebugStatsInTitleValue = false;
+#endif
     double fpsValue = 90.0;
     const char* iconPathValue = "assets/icon.png";
     const char* textFontFileValue = "";
@@ -34,8 +38,8 @@ struct DslAppConfig {
     }
     DslAppConfig& windowWidth(int value) { windowWidthValue = value; return *this; }
     DslAppConfig& windowHeight(int value) { windowHeightValue = value; return *this; }
-    DslAppConfig& showFrameCountInTitle(bool value = true) {
-        showFrameCountInTitleValue = value;
+    DslAppConfig& showDebugStatsInTitle(bool value = true) {
+        showDebugStatsInTitleValue = value;
         return *this;
     }
     DslAppConfig& fps(double value) { fpsValue = value; return *this; }

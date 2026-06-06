@@ -1,0 +1,80 @@
+struct GallerySettingsPage {
+    void settingRow(eui::Ui& ui, const std::string& id, const std::string& title, const std::string& note, bool enabled, float width, const std::function<void()>& onClick) {
+        const float toggleX = std::max(0.0f, width - 80.0f);
+        const float textWidth = std::max(0.0f, width - 132.0f);
+        components::SwitchStyle switchStyle(themeColors());
+        switchStyle.on = accent();
+        switchStyle.knob = optionNight
+            ? eui::Color{0.96f, 0.98f, 1.0f, 1.0f}
+            : eui::Color{1.0f, 1.0f, 1.0f, 1.0f};
+
+        ui.stack(id)
+            .size(width, 72.0f)
+            .content([&] {
+                ui.rect(id + ".hit")
+                    .size(width, 72.0f)
+                    .states(surfaceSoft(), buttonHover(surfaceSoft()), buttonPressed(surfaceSoft()))
+                    .radius(16.0f)
+                    .transition(pageTransition())
+                    .onClick(onClick)
+                    .build();
+
+                ui.text(id + ".title")
+                    .x(24.0f)
+                    .y(12.0f)
+                    .size(textWidth, 28.0f)
+                    .text(title)
+                    .fontSize(20.0f)
+                    .lineHeight(26.0f)
+                    .color(textPrimary())
+                    .build();
+
+                ui.text(id + ".note")
+                    .x(24.0f)
+                    .y(42.0f)
+                    .size(textWidth, 22.0f)
+                    .text(note)
+                    .fontSize(15.0f)
+                    .lineHeight(20.0f)
+                    .color(textMuted())
+                    .build();
+
+                ui.stack(id + ".switch.wrap")
+                    .x(toggleX)
+                    .y(22.0f)
+                    .size(46.0f, 26.0f)
+                    .content([&] {
+                        components::toggleSwitch(ui, id + ".switch")
+                            .size(46.0f, 26.0f)
+                            .trackSize(46.0f, 26.0f)
+                            .checked(enabled)
+                            .style(switchStyle)
+                            .transition(pageTransition())
+                            .onChange([onClick](bool) {
+                                if (onClick) {
+                                    onClick();
+                                }
+                            })
+                            .build();
+                    })
+                    .build();
+            })
+            .build();
+    }
+
+    void compose(eui::Ui& ui, float width, float height) {
+        const float rowWidth = std::max(0.0f, std::min(width, 720.0f));
+
+        ui.column("settings.list")
+            .size(rowWidth, std::min(height, 430.0f))
+            .gap(14.0f)
+            .content([&] {
+                settingRow(ui, "setting.dense", "Dense layout", "Use tighter spacing for gallery pages.", optionDense, rowWidth, [] { optionDense = !optionDense; });
+                settingRow(ui, "setting.glass", "Glass surfaces", "Show transparent panel examples in controls.", optionGlass, rowWidth, [] { optionGlass = !optionGlass; });
+                settingRow(ui, "setting.motion", "Animated transitions", "Keep page and property transitions enabled.", optionMotion, rowWidth, [] { optionMotion = !optionMotion; });
+                settingRow(ui, "setting.unlockFps", "Unlock 90 FPS limit", "Let animation rendering use the display refresh rate.", optionUnlockFps, rowWidth, [] { optionUnlockFps = !optionUnlockFps; });
+                settingRow(ui, "setting.night", "Night mode", "Switch gallery between light and dark theme tokens.", optionNight, rowWidth, [] { optionNight = !optionNight; });
+            });
+    }
+};
+

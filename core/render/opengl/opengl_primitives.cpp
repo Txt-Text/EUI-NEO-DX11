@@ -34,6 +34,9 @@ struct PrimitiveResources {
     GLint useGradientLocation = -1;
     GLint gradientDirectionLocation = -1;
     GLint shadowPassLocation = -1;
+    GLint insetShadowPassLocation = -1;
+    GLint shadowOffsetLocation = -1;
+    GLint shadowSpreadLocation = -1;
     GLint backdropLocation = -1;
     GLuint backdropTexture = 0;
     GLuint backdropFramebuffer = 0;
@@ -122,6 +125,9 @@ bool ensurePrimitiveResources() {
         "uniform int uUseGradient;\n"
         "uniform int uGradientDirection;\n"
         "uniform int uShadowPass;\n"
+        "uniform int uInsetShadowPass;\n"
+        "uniform vec2 uShadowOffset;\n"
+        "uniform float uShadowSpread;\n"
         "uniform sampler2D uBackdrop;\n"
         "float rand(vec2 co) {\n"
         "    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
@@ -156,6 +162,20 @@ bool ensurePrimitiveResources() {
         "    float distanceToEdge = roundedBoxDistance(vLocalPos - center, uRect.zw * 0.5, uRadius);\n"
         "    float blur = max(uShadowBlur, 1.0);\n"
         "    if (uShadowPass == 1) {\n"
+        "        if (uInsetShadowPass == 1) {\n"
+        "            float edgeWidth = max(fwidth(distanceToEdge), 0.75);\n"
+        "            float shapeAlpha = 1.0 - smoothstep(-edgeWidth, edgeWidth, distanceToEdge);\n"
+        "            if (shapeAlpha <= 0.0) discard;\n"
+        "            vec2 sideVector = dot(uShadowOffset, uShadowOffset) <= 0.0001 ? vec2(0.0, 1.0) : normalize(-uShadowOffset);\n"
+        "            vec2 localUnit = (vLocalPos - center) / max(uRect.zw * 0.5, vec2(1.0));\n"
+        "            float sideMask = clamp(0.34 + dot(localUnit, sideVector) * 0.66, 0.0, 1.0);\n"
+        "            float spreadBias = max(uShadowSpread, 0.0);\n"
+        "            float edgeFalloff = smoothstep(-blur - spreadBias, 0.0, distanceToEdge);\n"
+        "            float innerAlpha = edgeFalloff * sideMask;\n"
+        "            if (innerAlpha <= 0.0) discard;\n"
+        "            FragColor = vec4(uShadowColor.rgb, uShadowColor.a * innerAlpha * shapeAlpha * uOpacity);\n"
+        "            return;\n"
+        "        }\n"
         "        float shadowAlpha = 1.0 - smoothstep(-blur, blur, distanceToEdge);\n"
         "        if (shadowAlpha <= 0.0) discard;\n"
         "        FragColor = vec4(uShadowColor.rgb, uShadowColor.a * shadowAlpha * uOpacity);\n"
@@ -221,6 +241,9 @@ bool ensurePrimitiveResources() {
     resources.useGradientLocation = glGetUniformLocation(resources.shaderProgram, "uUseGradient");
     resources.gradientDirectionLocation = glGetUniformLocation(resources.shaderProgram, "uGradientDirection");
     resources.shadowPassLocation = glGetUniformLocation(resources.shaderProgram, "uShadowPass");
+    resources.insetShadowPassLocation = glGetUniformLocation(resources.shaderProgram, "uInsetShadowPass");
+    resources.shadowOffsetLocation = glGetUniformLocation(resources.shaderProgram, "uShadowOffset");
+    resources.shadowSpreadLocation = glGetUniformLocation(resources.shaderProgram, "uShadowSpread");
     resources.backdropLocation = glGetUniformLocation(resources.shaderProgram, "uBackdrop");
 
     glGenVertexArrays(1, &resources.vao);
@@ -360,6 +383,11 @@ void OpenGLRenderBackend::drawRoundedRect(const RoundedRectDrawCommand& command,
     glUniform1i(resources.useGradientLocation, command.gradient.enabled && !command.shadowPass ? 1 : 0);
     glUniform1i(resources.gradientDirectionLocation, static_cast<int>(command.gradient.direction));
     glUniform1i(resources.shadowPassLocation, command.shadowPass ? 1 : 0);
+    glUniform1i(resources.insetShadowPassLocation, command.insetShadowPass ? 1 : 0);
+    glUniform2f(resources.shadowOffsetLocation,
+                command.shadowPass ? command.shadowOffset.x : command.backdropOffset.x,
+                command.shadowPass ? command.shadowOffset.y : command.backdropOffset.y);
+    glUniform1f(resources.shadowSpreadLocation, command.shadowSpread);
     glUniform1i(resources.backdropLocation, 0);
 
     if (resources.backdropTexture == 0) {

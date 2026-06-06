@@ -59,19 +59,14 @@ public:
             .size(width_, height_)
             .zIndex(zIndex_)
             .clip()
-            .onScroll([currentOffset, maxOffset, scrollStep, onChange](const core::ScrollEvent& event) {
-                if (!onChange || maxOffset <= 0.0f) {
-                    return;
-                }
-                const float next = std::clamp(currentOffset - static_cast<float>(event.y) * scrollStep, 0.0f, maxOffset);
-                onChange(next);
-            })
+            .scrollState(id_, currentOffset, maxOffset, scrollStep)
+            .onScrollOffsetChanged(onChange)
             .content([&] {
                 ui_.column(id_ + ".content")
-                    .y(-currentOffset)
                     .width(contentWidth)
                     .height(core::SizeValue::wrapContent())
                     .gap(gap_)
+                    .scrollContentFrom(id_)
                     .content([&] {
                         if (content_) {
                             content_(ui_, contentWidth, height_);
@@ -82,6 +77,7 @@ public:
                 if (scrollable) {
                     components::scroll(ui_, id_ + ".scroll")
                         .style(scrollStyle_)
+                        .state(id_)
                         .x(std::max(0.0f, width_ - scrollWidth))
                         .size(scrollWidth, height_)
                         .viewport(height_)
@@ -90,7 +86,6 @@ public:
                         .step(scrollStep)
                         .zIndex(zIndex_ + 1)
                         .transition(transition_)
-                        .onChange(onChange)
                         .build();
                 }
             })

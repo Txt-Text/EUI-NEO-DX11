@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <functional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 namespace components {
@@ -42,16 +41,14 @@ public:
     SliderBuilder& onChange(std::function<void(float)> callback) { onChange_ = std::move(callback); return *this; }
 
     void build() {
-        SliderState& state = stateFor(id_);
         const float trackHeight = std::max(3.0f, height_ * 0.18f);
         const float trackY = (height_ - trackHeight) * 0.5f;
         const float knobSize = std::max(14.0f, height_ * 0.72f);
-        const float knobX = std::clamp(width_ * value_ - knobSize * 0.5f, 0.0f, std::max(0.0f, width_ - knobSize));
         const std::function<void(float)> onChange = onChange_;
-        const float width = width_;
 
         ui_.stack(id_)
             .size(width_, height_)
+            .sliderState(id_, value_, width_, knobSize, onChange)
             .content([&] {
                 ui_.rect(id_ + ".track")
                     .y(trackY)
@@ -67,10 +64,10 @@ public:
                     .radius(trackHeight * 0.5f)
                     .transition(transition_)
                     .animate(core::AnimProperty::Color)
+                    .sliderFillFrom(id_)
                     .build();
 
                 ui_.rect(id_ + ".knob")
-                    .x(knobX)
                     .y((height_ - knobSize) * 0.5f)
                     .size(knobSize, knobSize)
                     .color(style_.knob)
@@ -78,6 +75,7 @@ public:
                     .shadow(12.0f, 0.0f, 4.0f, theme::withAlpha(style_.fill, 0.20f))
                     .transition(transition_)
                     .animate(core::AnimProperty::Color | core::AnimProperty::Shadow)
+                    .sliderKnobFrom(id_)
                     .build();
 
                 ui_.rect(id_ + ".hit")
@@ -87,40 +85,13 @@ public:
                             theme::color(0.0f, 0.0f, 0.0f, 0.0f))
                     .z(10)
                     .interactive()
-                    .onPress([&state, width, onChange](const core::PointerEvent& event, const core::Rect& bounds) {
-                        state.bounds = bounds;
-                        const float next = valueFromPointer(event.x, bounds, width);
-                        if (onChange) {
-                            onChange(next);
-                        }
-                    })
-                    .onDrag([&state, width, onChange](const core::dsl::DragEvent& event) {
-                        const float next = valueFromPointer(event.x, state.bounds, width);
-                        if (onChange) {
-                            onChange(next);
-                        }
-                    })
+                    .sliderInputFrom(id_)
                     .build();
             })
             .build();
     }
 
 private:
-    struct SliderState {
-        core::Rect bounds;
-    };
-
-    static SliderState& stateFor(const std::string& id) {
-        static std::unordered_map<std::string, SliderState> states;
-        return states[id];
-    }
-
-    static float valueFromPointer(double pointerX, const core::Rect& bounds, float width) {
-        const float scale = width > 0.0f ? bounds.width / width : 1.0f;
-        const float localX = static_cast<float>((pointerX - bounds.x) / std::max(0.001f, scale));
-        return std::clamp(localX / std::max(1.0f, width), 0.0f, 1.0f);
-    }
-
     core::dsl::Ui& ui_;
     std::string id_;
     SliderStyle style_;

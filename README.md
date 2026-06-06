@@ -189,7 +189,7 @@ Use this path when your project already owns the native window, rendering contex
 
 ### 3. Develop Inside `examples/`
 
-For quick experiments or new built-in demos, add a new file such as `examples/my_app.cpp`, include `eui_neo.h`, and implement `app::dslAppConfig()` plus `app::compose()`. Top-level builds automatically create one executable per `examples/*.cpp` file.
+For quick experiments or new built-in demos, add a new file such as `examples/my_app.cpp`, include `eui_neo.h`, and implement `app::dslAppConfig()` plus `app::compose()`. Top-level builds automatically create one executable per `examples/*.cpp` file. For larger demos, use the `gallery` pattern: keep the app shell in `examples/gallery.cpp` and place QML-like page objects with local state under `examples/pages/*.h`.
 
 When EUI-NEO is added as a subdirectory, bundled examples are disabled by default. Set `-DEUI_BUILD_APPS=ON` to build `gallery`, `eui_demo`, `serial_tool`, and the other sample apps. See [Integration Guide](docs/集成指南.md) for complete CMake snippets, `FetchContent`, and embedded GLFW loop notes.
 

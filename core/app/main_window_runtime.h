@@ -2,10 +2,13 @@
 
 #include "eui/app.h"
 #include "core/app/app_runner.h"
+#include "core/input/input_state.h"
 #include "core/render/render_backend.h"
 #include "core/render/render_surface.h"
 #include "core/window/window_backend.h"
 
+#include <chrono>
+#include <thread>
 #include <utility>
 
 namespace app {
@@ -37,8 +40,22 @@ public:
                   SetTitleFn&& setTitle,
                   ChildAnimatingFn&& childAnimating) {
         runner_.updateFrameInterval(refreshRate, now);
-        const float deltaSeconds = runner_.consumeFrameDelta(now);
         const bool externalReady = runner_.consumeExternalReady();
+        const bool frameRequested =
+            runner_.needsRender ||
+            externalReady ||
+            runner_.anyAnimating(childAnimating()) ||
+            core::hasPendingPointerInput(window, metrics.pointerScale);
+        while (frameRequested) {
+            const double remaining = runner_.nextFrameTime - core::window::timeSeconds();
+            if (remaining <= 0.0) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::duration<double>(remaining));
+        }
+
+        const double frameTime = core::window::timeSeconds();
+        const float deltaSeconds = runner_.consumeFrameDelta(frameTime);
 
         updateAndRender(window,
                         renderBackend,
@@ -89,6 +106,7 @@ public:
             return false;
         }
 
+        const auto renderStart = std::chrono::steady_clock::now();
         renderBackend.beginFrame({
             window,
             core::window::nativeWindowInfo(window),
@@ -99,6 +117,8 @@ public:
         core::render::ScopedRenderBackend scopedRenderBackend(renderBackend);
         app::render(metrics.framebufferWidth, metrics.framebufferHeight, metrics.dpiScale);
         renderBackend.present();
+        const auto renderEnd = std::chrono::steady_clock::now();
+        runner_.recordRenderDuration(std::chrono::duration<double, std::milli>(renderEnd - renderStart).count());
         runner_.markRendered();
         return true;
     }

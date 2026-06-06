@@ -22,6 +22,7 @@ public:
     void destroy();
 
     void setSource(const std::string& source);
+    void setSvgSource(const std::string& key, const std::string& svg);
     void setFlipVertically(bool value);
     void setBounds(float x, float y, float width, float height);
     void setTint(const Color& tint);

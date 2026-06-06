@@ -151,7 +151,7 @@ const DslAppConfig& dslAppConfig() {
         .pageId("vulkan-lifecycle")
         .clearColor({0.045f, 0.052f, 0.064f, 1.0f})
         .windowSize(1040, 720)
-        .showFrameCountInTitle(true);
+        .showDebugStatsInTitle(true);
     return config;
 }
 

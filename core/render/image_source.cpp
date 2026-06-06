@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -424,24 +425,17 @@ void flipRgbaRows(std::vector<unsigned char>& pixels, int width, int height) {
     }
 }
 
-bool rasterizeSvgFile(const std::string& path,
-                      int targetWidth,
-                      int targetHeight,
-                      bool flipVertically,
-                      std::vector<unsigned char>& pixels,
-                      int& width,
-                      int& height) {
+bool rasterizeSvgString(const std::string& svg,
+                        int targetWidth,
+                        int targetHeight,
+                        bool flipVertically,
+                        std::vector<unsigned char>& pixels,
+                        int& width,
+                        int& height) {
     pixels.clear();
     width = 0;
     height = 0;
 
-    std::ifstream file(path, std::ios::binary);
-    if (!file.good()) {
-        return false;
-    }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string svg = buffer.str();
     if (svg.empty()) {
         return false;
     }
@@ -485,6 +479,22 @@ bool rasterizeSvgFile(const std::string& path,
         flipRgbaRows(pixels, width, height);
     }
     return !pixels.empty();
+}
+
+bool rasterizeSvgFile(const std::string& path,
+                      int targetWidth,
+                      int targetHeight,
+                      bool flipVertically,
+                      std::vector<unsigned char>& pixels,
+                      int& width,
+                      int& height) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file.good()) {
+        return false;
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    return rasterizeSvgString(buffer.str(), targetWidth, targetHeight, flipVertically, pixels, width, height);
 }
 
 bool readBinaryFile(const std::string& path, std::vector<unsigned char>& bytes) {
@@ -589,6 +599,36 @@ std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string
         stbi_image_free(pixels);
     }
     gStaticImageCache[cacheKey] = image;
+    return image;
+}
+
+std::shared_ptr<const StaticImageData> loadStaticSvg(const std::string& cacheKey,
+                                                     const std::string& svg,
+                                                     bool flipVertically) {
+    if (cacheKey.empty() || svg.empty()) {
+        return {};
+    }
+
+    const std::string resolvedCacheKey = "svg-string:" + cacheKey + "#" +
+                                         std::to_string(std::hash<std::string>{}(svg)) +
+                                         (flipVertically ? "#flip" : "#noflip");
+    if (auto cached = gStaticImageCache[resolvedCacheKey].lock()) {
+        return cached;
+    }
+
+    int width = 0;
+    int height = 0;
+    std::vector<unsigned char> pixels;
+    constexpr int kSvgRasterSize = 512;
+    if (!rasterizeSvgString(svg, kSvgRasterSize, kSvgRasterSize, flipVertically, pixels, width, height)) {
+        return {};
+    }
+
+    auto image = std::make_shared<StaticImageData>();
+    image->width = width;
+    image->height = height;
+    image->pixels = std::move(pixels);
+    gStaticImageCache[resolvedCacheKey] = image;
     return image;
 }
 

@@ -354,7 +354,7 @@ int main() {
     WindowState windowState;
     windowState.resetTiming(glfwGetTime());
     updateFrameInterval(window, windowState, windowState.lastTitleUpdate, true);
-    if (app::showFrameCountInTitle()) {
+    if (app::showDebugStatsInTitle()) {
         char title[128];
         std::snprintf(title, sizeof(title), "%s - 0 FPS", app::windowTitle());
         glfwSetWindowTitle(window, title);

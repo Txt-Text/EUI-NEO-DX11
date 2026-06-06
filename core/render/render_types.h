@@ -58,6 +58,7 @@ struct Shadow {
     float blur = 8.0f;
     float spread = 0.0f;
     Color color = {0.0f, 0.0f, 0.0f, 0.28f};
+    bool inset = false;
 };
 
 struct Transform {

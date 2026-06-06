@@ -27,10 +27,12 @@ float roundedBoxDistance(vec2 point, vec2 halfSize, float radius) {
 
 vec4 backdropRect(float blurRadiusPx) {
     vec2 windowSize = max(pc.windowAndShape.xy, vec2(1.0));
-    float left = clamp(floor(pc.rect.x - blurRadiusPx), 0.0, max(windowSize.x - 1.0, 0.0));
-    float top = clamp(floor(pc.rect.y - blurRadiusPx), 0.0, max(windowSize.y - 1.0, 0.0));
-    float right = clamp(ceil(pc.rect.x + pc.rect.z + blurRadiusPx), left + 1.0, windowSize.x);
-    float bottom = clamp(ceil(pc.rect.y + pc.rect.w + blurRadiusPx), top + 1.0, windowSize.y);
+    vec2 captureOffset = vec2(pc.flags.y, pc.flags2.w);
+    vec2 captureOrigin = pc.rect.xy + captureOffset;
+    float left = clamp(floor(captureOrigin.x - blurRadiusPx), 0.0, max(windowSize.x - 1.0, 0.0));
+    float top = clamp(floor(captureOrigin.y - blurRadiusPx), 0.0, max(windowSize.y - 1.0, 0.0));
+    float right = clamp(ceil(captureOrigin.x + pc.rect.z + blurRadiusPx), left + 1.0, windowSize.x);
+    float bottom = clamp(ceil(captureOrigin.y + pc.rect.w + blurRadiusPx), top + 1.0, windowSize.y);
     return vec4(left, top, right - left, bottom - top);
 }
 
@@ -74,11 +76,34 @@ void main() {
     bool shadowPass = pc.flags2.x > 0.5;
     float blurAmount = pc.flags2.y;
     bool backdropReady = pc.flags2.z > 0.5;
+    bool insetShadowPass = pc.flags2.w > 0.5;
 
     vec2 center = pc.rect.xy + pc.rect.zw * 0.5;
     float distanceToEdge = roundedBoxDistance(vLocalPos - center, pc.rect.zw * 0.5, radius);
     float blur = max(shadowBlur, 1.0);
     if (shadowPass) {
+        if (insetShadowPass) {
+            float edgeWidth = max(fwidth(distanceToEdge), 0.75);
+            float shapeAlpha = 1.0 - smoothstep(-edgeWidth, edgeWidth, distanceToEdge);
+            if (shapeAlpha <= 0.0) {
+                discard;
+            }
+
+            vec2 shadowOffset = pc.borderColor.xy;
+            float shadowSpread = pc.borderColor.z;
+            vec2 sideVector = dot(shadowOffset, shadowOffset) <= 0.0001 ? vec2(0.0, 1.0) : normalize(-shadowOffset);
+            vec2 localUnit = (vLocalPos - center) / max(pc.rect.zw * 0.5, vec2(1.0));
+            float sideMask = clamp(0.34 + dot(localUnit, sideVector) * 0.66, 0.0, 1.0);
+            float spreadBias = max(shadowSpread, 0.0);
+            float edgeFalloff = smoothstep(-blur - spreadBias, 0.0, distanceToEdge);
+            float innerAlpha = edgeFalloff * sideMask;
+            if (innerAlpha <= 0.0) {
+                discard;
+            }
+            outColor = vec4(pc.fillColor.rgb, pc.fillColor.a * innerAlpha * shapeAlpha * opacity);
+            return;
+        }
+
         float shadowAlpha = 1.0 - smoothstep(-blur, blur, distanceToEdge);
         if (shadowAlpha <= 0.0) {
             discard;

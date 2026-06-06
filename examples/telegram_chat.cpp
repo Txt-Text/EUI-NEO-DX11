@@ -504,7 +504,7 @@ const DslAppConfig& dslAppConfig() {
         .clearColor(rgb(229, 235, 243))
         .windowSize(1280, 820)
         .fps(60.0)
-        .showFrameCountInTitle(false);
+        .showDebugStatsInTitle(false);
     return config;
 }
 

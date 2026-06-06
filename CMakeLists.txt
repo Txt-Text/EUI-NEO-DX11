@@ -64,6 +64,7 @@ set(CORE_SOURCES
     core/platform/async.cpp
     core/platform/network.cpp
     core/platform/native_bridge.c
+    core/platform/performance_stats.cpp
     core/platform/platform.cpp
     core/render/image.cpp
     core/render/image_facade.cpp
@@ -140,7 +141,7 @@ endif()
 
 if(WIN32)
     target_compile_definitions(eui_neo PUBLIC EUI_TRAY_WINAPI=1 NOMINMAX)
-    target_link_libraries(eui_neo PUBLIC winmm urlmon shell32 user32 imm32)
+    target_link_libraries(eui_neo PUBLIC winmm urlmon shell32 user32 imm32 pdh)
 elseif(APPLE)
     target_compile_definitions(eui_neo PUBLIC EUI_TRAY_APPKIT=1)
     target_link_libraries(eui_neo PUBLIC "-framework Cocoa" objc)

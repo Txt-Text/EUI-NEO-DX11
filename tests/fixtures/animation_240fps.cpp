@@ -105,7 +105,7 @@ const DslAppConfig& dslAppConfig() {
         .pageId("animation-240fps")
         .clearColor({0.045f, 0.052f, 0.064f, 1.0f})
         .windowSize(1280, 720)
-        .showFrameCountInTitle(true)
+        .showDebugStatsInTitle(true)
         .fps(240.0)
         .iconPath("");
     return config;

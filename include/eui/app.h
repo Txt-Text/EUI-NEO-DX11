@@ -23,7 +23,7 @@ struct DslWindowRequest {
 };
 
 const char* windowTitle();
-bool showFrameCountInTitle();
+bool showDebugStatsInTitle();
 double frameRateLimit();
 int initialWindowWidth();
 int initialWindowHeight();

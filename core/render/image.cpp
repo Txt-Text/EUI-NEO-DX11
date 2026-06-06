@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -39,7 +40,16 @@ int gifFrameDelayMs(const render::image::GifFrameData& frames, int frameIndex) {
 struct ImagePrimitive::Impl {
     bool initialize() { return true; }
     void destroy();
-    void setSource(const std::string& source) { source_ = source; }
+    void setSource(const std::string& source) {
+        source_ = source;
+        svgKey_.clear();
+        svgSource_.clear();
+    }
+    void setSvgSource(const std::string& key, const std::string& svg) {
+        source_.clear();
+        svgKey_ = key;
+        svgSource_ = svg;
+    }
     void setFlipVertically(bool value) { flipVertically_ = value; }
     void setBounds(float x, float y, float width, float height) { bounds_ = {x, y, width, height}; }
     void setTint(const Color& tint) { tint_ = tint; }
@@ -76,7 +86,11 @@ struct ImagePrimitive::Impl {
     void rebuildVertices(float* vertices) const;
 
     std::string source_;
+    std::string svgKey_;
+    std::string svgSource_;
     std::string loadedSource_;
+    std::string loadedSvgKey_;
+    std::string loadedSvgSource_;
     bool flipVertically_ = false;
     bool loadedFlipVertically_ = false;
     bool pendingLoad_ = false;
@@ -115,11 +129,56 @@ void ImagePrimitive::Impl::destroy() {
     loadedTextureCacheKey_.clear();
     loadedGifPath_.clear();
     loadedSource_.clear();
+    loadedSvgKey_.clear();
+    loadedSvgSource_.clear();
 }
 
 bool ImagePrimitive::Impl::updateTexture() {
     bool changed = false;
     bool pending = false;
+    if (!svgKey_.empty() || !svgSource_.empty()) {
+        pendingLoad_ = false;
+        if (loadedSvgKey_ == svgKey_ && loadedSvgSource_ == svgSource_ &&
+            loadedFlipVertically_ == flipVertically_ && staticImage_) {
+            return false;
+        }
+
+        std::shared_ptr<const render::image::StaticImageData> image =
+            render::image::loadStaticSvg(svgKey_, svgSource_, flipVertically_);
+        if (!image) {
+            staticImage_.reset();
+            desiredTextureCacheKey_.clear();
+            textureWidth_ = 0;
+            textureHeight_ = 0;
+            textureDirty_ = true;
+            return false;
+        }
+
+        gifFrames_.reset();
+        loadedGifPath_.clear();
+        gifFrameCount_ = 0;
+        staticImage_ = std::move(image);
+        textureWidth_ = staticImage_->width;
+        textureHeight_ = staticImage_->height;
+        loadedSource_.clear();
+        loadedSvgKey_ = svgKey_;
+        loadedSvgSource_ = svgSource_;
+        loadedFlipVertically_ = flipVertically_;
+        desiredTextureCacheKey_ = "svg-string:" + svgKey_ + "#" +
+                                  std::to_string(std::hash<std::string>{}(svgSource_)) +
+                                  (flipVertically_ ? "#flip" : "#noflip");
+        textureDirty_ = true;
+        return true;
+    }
+
+    if (!loadedSvgKey_.empty() || !loadedSvgSource_.empty()) {
+        loadedSvgKey_.clear();
+        loadedSvgSource_.clear();
+        staticImage_.reset();
+        desiredTextureCacheKey_.clear();
+        textureDirty_ = true;
+    }
+
     const std::string resolvedPath = render::image::resolveImagePath(source_, &pending);
     pendingLoad_ = pending;
     const bool isGif = !resolvedPath.empty() && render::image::isGifPath(resolvedPath);
@@ -458,6 +517,7 @@ ImagePrimitive& ImagePrimitive::operator=(ImagePrimitive&&) noexcept = default;
 bool ImagePrimitive::initialize() { return impl_->initialize(); }
 void ImagePrimitive::destroy() { impl_->destroy(); }
 void ImagePrimitive::setSource(const std::string& source) { impl_->setSource(source); }
+void ImagePrimitive::setSvgSource(const std::string& key, const std::string& svg) { impl_->setSvgSource(key, svg); }
 void ImagePrimitive::setFlipVertically(bool value) { impl_->setFlipVertically(value); }
 void ImagePrimitive::setBounds(float x, float y, float width, float height) { impl_->setBounds(x, y, width, height); }
 void ImagePrimitive::setTint(const Color& tint) { impl_->setTint(tint); }

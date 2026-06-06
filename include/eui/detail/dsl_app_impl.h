@@ -165,8 +165,8 @@ const char* windowTitle() {
     return dslAppConfig().titleValue;
 }
 
-bool showFrameCountInTitle() {
-    return dslAppConfig().showFrameCountInTitleValue;
+bool showDebugStatsInTitle() {
+    return dslAppConfig().showDebugStatsInTitleValue;
 }
 
 double frameRateLimit() {

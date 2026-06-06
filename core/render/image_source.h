@@ -31,6 +31,9 @@ std::shared_ptr<const StaticImageData> loadStaticImage(const std::string& source
                                                        bool* pending);
 std::shared_ptr<const StaticImageData> loadStaticImageFromPath(const std::string& resolvedPath,
                                                                bool flipVertically);
+std::shared_ptr<const StaticImageData> loadStaticSvg(const std::string& cacheKey,
+                                                     const std::string& svg,
+                                                     bool flipVertically);
 std::shared_ptr<const GifFrameData> loadGifFrames(const std::string& resolvedPath,
                                                   bool flipVertically);
 

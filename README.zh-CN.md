@@ -189,7 +189,7 @@ eui_neo_copy_assets(my_app)
 
 ### 3. 直接在 `examples/` 开发
 
-快速实验或新增内置示例时，直接创建 `examples/my_app.cpp`，包含 `eui_neo.h`，实现 `app::dslAppConfig()` 和 `app::compose()`。顶层构建会自动为每个 `examples/*.cpp` 生成一个可执行程序。
+快速实验或新增内置示例时，直接创建 `examples/my_app.cpp`，包含 `eui_neo.h`，实现 `app::dslAppConfig()` 和 `app::compose()`。顶层构建会自动为每个 `examples/*.cpp` 生成一个可执行程序。较大的 demo 推荐使用 `gallery` 这种组织方式：`examples/gallery.cpp` 保留 app 壳、路由和共享主题，具体页面放到 `examples/pages/*.h`，每个页面对象自己持有状态并声明画面，接近 QML 页面组件的写法。
 
 EUI-NEO 作为子目录接入时，默认不会构建仓库自带示例。需要构建 `gallery`、`eui_demo`、`serial_tool` 等示例时，配置 `-DEUI_BUILD_APPS=ON`。完整 CMake 片段、`FetchContent` 和嵌入已有 GLFW 主循环的写法见 [集成指南](docs/集成指南.md)。
 

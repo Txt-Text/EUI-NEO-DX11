@@ -8,7 +8,7 @@ const DslAppConfig& dslAppConfig() {
         .pageId("empty_window")
         .clearColor({0.16f, 0.18f, 0.20f, 1.0f})
         .windowSize(800, 600)
-        .showFrameCountInTitle(false)
+        .showDebugStatsInTitle(false)
         .fps(0.0)
         .iconPath("");
     return config;

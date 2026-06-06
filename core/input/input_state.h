@@ -245,6 +245,25 @@ inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle w
     return {std::move(keyboard), scroll};
 }
 
+inline bool hasPendingPointerInput(window::Handle window, float dpiScale = 1.0f) {
+    const auto stateIt = detail::pointerStates().find(window);
+    if (stateIt == detail::pointerStates().end()) {
+        return false;
+    }
+
+    double x = 0.0;
+    double y = 0.0;
+    core::window::getCursorPosition(window, x, y);
+    x *= dpiScale;
+    y *= dpiScale;
+
+    const detail::PointerState& state = stateIt->second;
+    return x != state.lastX ||
+           y != state.lastY ||
+           core::window::isMouseButtonDown(window, 0) != state.lastDown ||
+           core::window::isMouseButtonDown(window, 1) != state.lastRightDown;
+}
+
 inline void releaseInputQueue(window::Handle window) {
     detail::inputQueues().erase(window);
     detail::pointerStates().erase(window);

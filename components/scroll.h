@@ -4,7 +4,6 @@
 #include "core/dsl.h"
 
 #include <algorithm>
-#include <functional>
 #include <string>
 #include <utility>
 
@@ -42,6 +41,7 @@ public:
         return *this;
     }
     ScrollBuilder& size(float width, float height) { width_ = width; height_ = height; return *this; }
+    ScrollBuilder& state(const std::string& id) { stateId_ = id; return *this; }
     ScrollBuilder& offset(float value) { offset_ = std::max(0.0f, value); return *this; }
     ScrollBuilder& value(float value) { return offset(value); }
     ScrollBuilder& viewport(float value) { viewport_ = std::max(0.0f, value); return *this; }
@@ -58,27 +58,22 @@ public:
         transition_ = core::Transition::make(duration, ease);
         return *this;
     }
-    ScrollBuilder& onChange(std::function<void(float)> callback) {
-        onChange_ = std::move(callback);
-        return *this;
-    }
 
     void build() {
         const float maxOffset = std::max(0.0f, content_ - viewport_);
         const bool scrollable = maxOffset > 0.0f && viewport_ > 0.0f && content_ > 0.0f;
-        const float normalized = scrollable ? std::clamp(offset_ / maxOffset, 0.0f, 1.0f) : 0.0f;
         const float thumbHeight = scrollable
             ? std::clamp(height_ * (viewport_ / content_), std::min(height_, 24.0f), height_)
             : height_;
         const float travel = std::max(0.0f, height_ - thumbHeight);
-        const float thumbY = travel * normalized;
         const float currentOffset = std::clamp(offset_, 0.0f, maxOffset);
         const float scrollStep = step_;
-        const std::function<void(float)> onChange = onChange_;
+        const std::string runtimeStateId = stateId_.empty() ? id_ : stateId_;
 
         auto root = ui_.stack(id_)
             .size(width_, height_)
-            .zIndex(zIndex_);
+            .zIndex(zIndex_)
+            .scrollState(runtimeStateId, currentOffset, maxOffset, scrollStep);
         if (hasX_) {
             root.x(x_);
         }
@@ -90,33 +85,19 @@ public:
                     .size(width_, height_)
                     .color(style_.track)
                     .radius(style_.radius)
-                    .onScroll([scrollable, currentOffset, maxOffset, scrollStep, onChange](const core::ScrollEvent& event) {
-                        if (!scrollable || !onChange) {
-                            return;
-                        }
-                        const float next = std::clamp(currentOffset - static_cast<float>(event.y) * scrollStep, 0.0f, maxOffset);
-                        onChange(next);
-                    })
+                    .scrollState(runtimeStateId, currentOffset, maxOffset, scrollStep)
                     .build();
 
                 ui_.rect(id_ + ".thumb")
-                    .y(thumbY)
                     .size(width_, thumbHeight)
                     .states(style_.thumb, style_.thumbHover, style_.thumbPressed)
                     .radius(style_.radius)
                     .cursor(core::CursorShape::Hand)
                     .transition(transition_)
                     .animate(core::AnimProperty::Color)
-                    .onDrag([scrollable, currentOffset, maxOffset, travel, onChange](const core::dsl::DragEvent& event) {
-                        if (!scrollable || !onChange || travel <= 0.0f) {
-                            return;
-                        }
-                        const float next = std::clamp(
-                            currentOffset + static_cast<float>(event.deltaY) * (maxOffset / travel),
-                            0.0f,
-                            maxOffset);
-                        onChange(next);
-                    })
+                    .scrollDragFrom(runtimeStateId, travel)
+                    .scrollThumbFrom(runtimeStateId, travel)
+                    .transformedHitTest()
                     .build();
             })
             .build();
@@ -125,9 +106,9 @@ public:
 private:
     core::dsl::Ui& ui_;
     std::string id_;
+    std::string stateId_;
     ScrollStyle style_;
     core::Transition transition_ = core::Transition::make(0.12f, core::Ease::OutCubic);
-    std::function<void(float)> onChange_;
     float width_ = 8.0f;
     float height_ = 180.0f;
     float viewport_ = 180.0f;
