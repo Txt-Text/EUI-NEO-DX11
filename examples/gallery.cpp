@@ -24,6 +24,7 @@ bool optionUnlockFps = false;
 bool optionNight = true;
 eui::Color sampleColor = components::theme::defaultPrimary();
 bool workshopOpen = false;
+bool workshopHeartLiked = false;
 float pageScroll[6] = {};
 
 constexpr float kSidebarWidth = 272.0f;
@@ -437,7 +438,20 @@ void composeContent(eui::Ui& ui, float width, float height) {
                     workshopOpen = false;
                 })
                 .content([&](eui::Ui& panelUi, float panelWidth, float) {
-                    components::workshop::neumorphicButton(panelUi, "workshop.neumorphic.button").theme(themeColors()).size(std::min(310.0f, panelWidth), 92.0f).fontSize(32.0f).text("Click me").transition(pageTransition()).build();
+                    panelUi.column("workshop.components")
+                        .size(panelWidth, 382.0f)
+                        .gap(22.0f)
+                        .alignItems(eui::Align::CENTER)
+                        .content([&] {
+                            components::workshop::neumorphicButton(panelUi, "workshop.neumorphic.button").theme(themeColors()).size(std::min(310.0f, panelWidth), 92.0f).fontSize(32.0f).text("Click me").transition(pageTransition()).build();
+
+                            components::workshop::heartSwitch(panelUi, "workshop.heart.switch").theme(themeColors()).size(64.0f, 64.0f).checked(workshopHeartLiked).transition(pageTransition()).onChange([](bool value) {
+                                workshopHeartLiked = value;
+                            }).build();
+
+                            components::workshop::tiltCard(panelUi, "workshop.tilt.card").theme(themeColors()).size(std::min(318.0f, panelWidth), 178.0f).transition(pageTransition()).build();
+                        })
+                        .build();
                 })
                 .build();
         });

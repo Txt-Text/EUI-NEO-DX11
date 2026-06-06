@@ -141,6 +141,7 @@ struct Element {
     std::function<void()> onClick;
     std::function<void(const PointerEvent&, const Rect&)> onPress;
     std::function<void(const PointerEvent&, const Rect&)> onRelease;
+    std::function<void(const PointerEvent&, const Rect&)> onMove;
     std::function<void(const PointerEvent&, const Rect&)> onContextMenu;
     std::function<void(bool)> onHoverChanged;
     std::function<void(bool)> onFocusChanged;
@@ -555,6 +556,13 @@ public:
         return self();
     }
 
+    Derived& onMove(std::function<void(const PointerEvent&, const Rect&)> callback) {
+        element_->interactive = true;
+        element_->cursor = CursorShape::Hand;
+        element_->onMove = std::move(callback);
+        return self();
+    }
+
     Derived& onContextMenu(std::function<void(const PointerEvent&, const Rect&)> callback) {
         element_->interactive = true;
         element_->cursor = CursorShape::Hand;
@@ -835,6 +843,13 @@ public:
         this->element_->interactive = true;
         this->element_->cursor = CursorShape::Hand;
         this->element_->onClick = std::move(callback);
+        return this->self();
+    }
+
+    Derived& onMove(std::function<void(const PointerEvent&, const Rect&)> callback) {
+        this->element_->interactive = true;
+        this->element_->cursor = CursorShape::Hand;
+        this->element_->onMove = std::move(callback);
         return this->self();
     }
 

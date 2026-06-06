@@ -72,6 +72,7 @@ public:
     MouseAreaBuilder& onHover(std::function<void(bool)> callback) { return onHoverChanged(std::move(callback)); }
     MouseAreaBuilder& onEnter(std::function<void()> callback) { onEnter_ = std::move(callback); return *this; }
     MouseAreaBuilder& onLeave(std::function<void()> callback) { onLeave_ = std::move(callback); return *this; }
+    MouseAreaBuilder& onMove(std::function<void(const MouseEvent&)> callback) { onMove_ = std::move(callback); return *this; }
     MouseAreaBuilder& onDragStart(std::function<void(const MouseEvent&)> callback) { onDragStart_ = std::move(callback); return *this; }
     MouseAreaBuilder& onDrag(std::function<void(const MouseDragEvent&)> callback) { onDrag_ = std::move(callback); return *this; }
     MouseAreaBuilder& onDragEnd(std::function<void(const MouseDragEvent&)> callback) { onDragEnd_ = std::move(callback); return *this; }
@@ -94,6 +95,7 @@ public:
         const std::function<void(bool)> onHoverChanged = onHoverChanged_;
         const std::function<void()> onEnter = onEnter_;
         const std::function<void()> onLeave = onLeave_;
+        const std::function<void(const MouseEvent&)> onMove = onMove_;
         const std::function<void(const MouseEvent&)> onDragStart = onDragStart_;
         const std::function<void(const MouseDragEvent&)> onDrag = onDrag_;
         const std::function<void(const MouseDragEvent&)> onDragEnd = onDragEnd_;
@@ -171,6 +173,12 @@ public:
                 if (!hover && onLeave) {
                     onLeave();
                 }
+            });
+        }
+
+        if (onMove) {
+            area.onMove([safeWidth, safeHeight, onMove](const core::PointerEvent& event, const core::Rect& bounds) {
+                onMove(makeMouseEvent(event, bounds, safeWidth, safeHeight));
             });
         }
 
@@ -315,6 +323,7 @@ private:
     std::function<void(bool)> onHoverChanged_;
     std::function<void()> onEnter_;
     std::function<void()> onLeave_;
+    std::function<void(const MouseEvent&)> onMove_;
     std::function<void(const MouseEvent&)> onDragStart_;
     std::function<void(const MouseDragEvent&)> onDrag_;
     std::function<void(const MouseDragEvent&)> onDragEnd_;

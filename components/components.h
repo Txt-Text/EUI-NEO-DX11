@@ -34,4 +34,6 @@
 #include "components/image.h"
 #include "components/theme.h"
 
+#include "components/workshop/heart_switch.h"
 #include "components/workshop/neumorphic_button.h"
+#include "components/workshop/tilt_card.h"

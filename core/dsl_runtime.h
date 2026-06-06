@@ -1172,9 +1172,15 @@ private:
     }
 
     std::string hitTestFocusable(const PointerEvent& event, float dpiScale) const {
-        return hitTest(event, dpiScale, [](const Element& element) {
-            return element.focusable && !element.disabled;
-        });
+        std::string targetId;
+        const RenderTransform identity;
+        const std::vector<const Element*> roots = orderedElements(ui_.roots());
+        for (auto it = roots.rbegin(); it != roots.rend(); ++it) {
+            if (hitTestFocusableElement(**it, event, dpiScale, identity, false, {}, targetId)) {
+                break;
+            }
+        }
+        return targetId;
     }
 
     std::string hitTestScrollable(const PointerEvent& event, float dpiScale) const {
@@ -1188,14 +1194,16 @@ private:
         std::string targetId;
         const RenderTransform identity;
         const std::vector<const Element*> roots = orderedElements(ui_.roots());
-        for (const Element* root : roots) {
-            hitTestElement(*root, event, dpiScale, identity, predicate, false, {}, targetId);
+        for (auto it = roots.rbegin(); it != roots.rend(); ++it) {
+            if (hitTestElement(**it, event, dpiScale, identity, predicate, false, {}, targetId)) {
+                break;
+            }
         }
         return targetId;
     }
 
     template <typename Predicate>
-    void hitTestElement(const Element& element,
+    bool hitTestElement(const Element& element,
                         const PointerEvent& event,
                         float dpiScale,
                         const RenderTransform& inheritedTransform,
@@ -1211,7 +1219,7 @@ private:
             const Rect clipBounds = applyRenderTransform(bounds, renderTransform);
             if (effectiveHasClip) {
                 if (!intersectRect(effectiveClip, clipBounds, effectiveClip)) {
-                    return;
+                    return false;
                 }
             } else {
                 effectiveClip = clipBounds;
@@ -1220,17 +1228,69 @@ private:
         }
 
         if (effectiveHasClip && !effectiveClip.contains(event.x, event.y)) {
-            return;
+            return false;
+        }
+
+        const std::vector<const Element*> children = orderedElements(element.children);
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            if (hitTestElement(**it, event, dpiScale, renderTransform, predicate, effectiveHasClip, effectiveClip, targetId)) {
+                return true;
+            }
         }
 
         if (predicate(element) && hitContains(element, event, dpiScale, bounds, renderTransform)) {
             targetId = element.id;
+            return true;
+        }
+        return false;
+    }
+
+    bool hitTestFocusableElement(const Element& element,
+                                 const PointerEvent& event,
+                                 float dpiScale,
+                                 const RenderTransform& inheritedTransform,
+                                 bool hasClip,
+                                 const Rect& clipRect,
+                                 std::string& targetId) const {
+        const RenderTransform renderTransform = resolveRenderTransform(element, dpiScale, inheritedTransform);
+        Rect effectiveClip = clipRect;
+        bool effectiveHasClip = hasClip;
+        const Rect bounds = toPixelRect(element.frame, dpiScale);
+        if (element.clip) {
+            const Rect clipBounds = applyRenderTransform(bounds, renderTransform);
+            if (effectiveHasClip) {
+                if (!intersectRect(effectiveClip, clipBounds, effectiveClip)) {
+                    return false;
+                }
+            } else {
+                effectiveClip = clipBounds;
+                effectiveHasClip = true;
+            }
+        }
+
+        if (effectiveHasClip && !effectiveClip.contains(event.x, event.y)) {
+            return false;
         }
 
         const std::vector<const Element*> children = orderedElements(element.children);
-        for (const Element* child : children) {
-            hitTestElement(*child, event, dpiScale, renderTransform, predicate, effectiveHasClip, effectiveClip, targetId);
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            if (hitTestFocusableElement(**it, event, dpiScale, renderTransform, effectiveHasClip, effectiveClip, targetId)) {
+                return true;
+            }
         }
+
+        if (!hitContains(element, event, dpiScale, bounds, renderTransform)) {
+            return false;
+        }
+        if (element.focusable && !element.disabled) {
+            targetId = element.id;
+            return true;
+        }
+        if (element.interactive && !element.disabled) {
+            targetId.clear();
+            return true;
+        }
+        return false;
     }
 
     void setFocusedId(const std::string& id) {
@@ -1344,6 +1404,24 @@ private:
 
         if (enabled && instance.state.hover && element.cursor == CursorShape::Hand) {
             wantsHandCursor_ = true;
+        }
+
+        if (enabled && topmostHover && element.onMove &&
+            (event.deltaX != 0.0 || event.deltaY != 0.0 || wasHover != instance.state.hover)) {
+            PointerEvent logicalEvent = event;
+            logicalEvent.x /= dpiScale;
+            logicalEvent.y /= dpiScale;
+            logicalEvent.deltaX /= dpiScale;
+            logicalEvent.deltaY /= dpiScale;
+            const Rect logicalBounds{
+                bounds.x / dpiScale,
+                bounds.y / dpiScale,
+                bounds.width / dpiScale,
+                bounds.height / dpiScale
+            };
+            element.onMove(logicalEvent, logicalBounds);
+            needsCompose_ = true;
+            needsRender_ = true;
         }
 
         if (enabled && topmostHover && event.rightPressedThisFrame && element.onContextMenu) {
