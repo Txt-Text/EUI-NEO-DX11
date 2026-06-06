@@ -267,10 +267,12 @@ void configureOpenGLWindowHints() {
 } // namespace
 
 Handle createWindow(const WindowCreateRequest& request) {
+    GLFWwindow* shareContext = nullptr;
     if (request.renderApi == RenderApi::Vulkan) {
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     } else {
         configureOpenGLWindowHints();
+        shareContext = static_cast<GLFWwindow*>(request.parent);
     }
     glfwWindowHint(GLFW_RESIZABLE, request.resizable ? GLFW_TRUE : GLFW_FALSE);
 
@@ -279,7 +281,7 @@ Handle createWindow(const WindowCreateRequest& request) {
         request.height,
         request.title != nullptr ? request.title : "",
         nullptr,
-        static_cast<GLFWwindow*>(request.parent));
+        shareContext);
 }
 
 void destroyWindow(Handle window) {
