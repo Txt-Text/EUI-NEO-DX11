@@ -1,4 +1,49 @@
 struct GalleryStylePage {
+    const char* markdownSample() const {
+        return R"(# Markdown card
+
+Common syntax rendered inside the Style page.
+
+## Inline
+
+Use **strong**, *emphasis*, `inline code`, [links](https://example.com), ~~deleted text~~, and entity text like &amp; &lt; &gt;.
+
+## Lists
+
+- Unordered item
+- Wrapped item with a longer sentence to check line wrapping in a constrained card.
+  - Nested item
+
+1. Ordered item
+2. Second ordered item
+
+- [x] Checked task
+- [ ] Open task
+
+## Quote
+
+> Markdown composes into normal EUI primitives.
+
+## Code
+
+```cpp
+components::markdown(ui, "style.markdown")
+    .theme(themeColors())
+    .width(contentWidth)
+    .markdown(source)
+    .build();
+```
+
+## Table
+
+| Syntax | Result |
+| :--- | :--- |
+| `# title` | Heading |
+| `- item` | List |
+| `` `code` `` | Inline code |
+)";
+    }
+
     void textSample(eui::Ui& ui, const std::string& id, const std::string& text, float size, float height, float width, const eui::Color& color) {
         ui.text(id)
             .size(width, height)
@@ -50,6 +95,47 @@ struct GalleryStylePage {
                     .lineHeight(15.0f)
                     .color(textMuted())
                     .horizontalAlign(eui::HorizontalAlign::Center)
+                    .build();
+            })
+            .build();
+    }
+
+    void markdownCard(eui::Ui& ui, float width) {
+        const float cardWidth = std::max(280.0f, std::min(width, 820.0f));
+        const float inset = 22.0f;
+        const float markdownHeight = 980.0f;
+        const float cardHeight = markdownHeight + inset * 2.0f + 42.0f;
+
+        ui.stack("style.markdown.card")
+            .size(cardWidth, cardHeight)
+            .content([&] {
+                ui.rect("style.markdown.card.bg")
+                    .size(cardWidth, cardHeight)
+                    .color(surface())
+                    .radius(14.0f)
+                    .border(1.0f, borderColor(0.72f))
+                    .shadow(18.0f, 0.0f, 8.0f, shadowColor(0.18f, 0.08f))
+                    .transition(pageTransition())
+                    .build();
+
+                ui.text("style.markdown.card.title")
+                    .position(inset, inset)
+                    .size(std::max(0.0f, cardWidth - inset * 2.0f), 28.0f)
+                    .text("Markdown Preview")
+                    .fontSize(22.0f)
+                    .lineHeight(28.0f)
+                    .fontWeight(760)
+                    .color(textPrimary())
+                    .transition(textTransition())
+                    .build();
+
+                components::markdown(ui, "style.markdown.preview")
+                    .position(inset, inset + 42.0f)
+                    .theme(themeColors())
+                    .width(std::max(0.0f, cardWidth - inset * 2.0f))
+                    .height(markdownHeight)
+                    .markdown(markdownSample())
+                    .zIndex(1)
                     .build();
             })
             .build();
@@ -148,6 +234,15 @@ struct GalleryStylePage {
                 themeSwatch(ui, "style.color.body", "bodyColor", visuals.bodyColor, swatchWidth);
                 themeSwatch(ui, "style.color.softAccent", "softAccent", visuals.softAccentColor, swatchWidth);
             });
+
+        ui.text("style.markdown.title")
+            .size(width, 30.0f)
+            .text("Markdown Component")
+            .fontSize(25.0f)
+            .lineHeight(30.0f)
+            .color(textPrimary())
+            .build();
+
+        markdownCard(ui, width);
     }
 };
-

@@ -204,6 +204,11 @@ if(TARGET CURL::libcurl)
     target_compile_definitions(eui_neo PUBLIC EUI_HAS_CURL=1)
 endif()
 
+if(TARGET md4c::md4c)
+    target_link_libraries(eui_neo PUBLIC md4c::md4c)
+    target_compile_definitions(eui_neo PUBLIC EUI_HAS_MD4C=1)
+endif()
+
 # -----------------------------------------------------------------------------
 # App target helpers
 # -----------------------------------------------------------------------------

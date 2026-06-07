@@ -4,6 +4,7 @@ if(NOT EUI_DEPS_MODE MATCHES "^(bundled|auto|fetch)$")
     message(FATAL_ERROR "EUI_DEPS_MODE must be one of: bundled, auto, fetch")
 endif()
 option(EUI_ENABLE_HARFBUZZ "Enable HarfBuzz shaping for complex text" ON)
+option(EUI_ENABLE_MARKDOWN "Enable MD4C Markdown parsing support" ON)
 
 set(EUI_THIRD_PARTY_DIR "${CMAKE_CURRENT_LIST_DIR}")
 list(PREPEND CMAKE_MODULE_PATH "${EUI_THIRD_PARTY_DIR}")
@@ -221,6 +222,15 @@ if(EUI_ENABLE_HARFBUZZ)
     )
 endif()
 
+if(EUI_ENABLE_MARKDOWN)
+    eui_use_bundled_dependency(
+        EUI_USE_BUNDLED_MD4C
+        "MD4C"
+        "${EUI_THIRD_PARTY_DIR}/md4c"
+        "src/md4c.c"
+    )
+endif()
+
 if(EUI_RESOLVED_RENDER_BACKEND STREQUAL "opengl")
     find_package(OpenGL QUIET)
     if(NOT OpenGL_FOUND)
@@ -366,6 +376,26 @@ if(EUI_ENABLE_HARFBUZZ)
     endif()
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+endif()
+
+if(EUI_ENABLE_MARKDOWN)
+    if(EUI_USE_BUNDLED_MD4C)
+        set(EUI_MD4C_DIR "${EUI_THIRD_PARTY_DIR}/md4c")
+    else()
+        eui_fetch_dependency(
+            EUI_MD4C_DIR
+            eui_md4c_source
+            "https://github.com/mity/md4c/archive/refs/tags/release-0.5.3.zip"
+        )
+    endif()
+
+    add_library(eui_md4c STATIC "${EUI_MD4C_DIR}/src/md4c.c")
+    target_include_directories(eui_md4c PUBLIC "${EUI_MD4C_DIR}/src")
+    set_target_properties(eui_md4c PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    eui_silence_third_party_warnings(eui_md4c)
+    if(NOT TARGET md4c::md4c)
+        add_library(md4c::md4c ALIAS eui_md4c)
+    endif()
 endif()
 
 if(UNIX AND NOT APPLE)
