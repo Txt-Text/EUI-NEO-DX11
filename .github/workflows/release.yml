@@ -56,7 +56,9 @@ jobs:
         shell: pwsh
         run: |
           vcpkg install glslang:x64-windows-static
-          "$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows-static/tools/glslang" | Out-File -FilePath $env:GITHUB_PATH -Append
+          $validator = Get-ChildItem "$env:VCPKG_INSTALLATION_ROOT/installed" -Recurse -Filter glslangValidator.exe -File | Select-Object -First 1
+          if (-not $validator) { throw "glslangValidator.exe was not installed by vcpkg." }
+          $validator.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: configure windows
         if: matrix.platform == 'windows'
