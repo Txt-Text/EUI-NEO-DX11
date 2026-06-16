@@ -28,7 +28,7 @@ set(PNGLIB_SHARED_VERSION ${PNGLIB_ABI_VERSION}.${PNGLIB_REVISION}.${PNGLIB_SUBR
 
 project(libpng
         VERSION ${PNGLIB_VERSION}
-        LANGUAGES C ASM)
+        LANGUAGES C)
 
 if(POLICY CMP0074)
   # Allow find_package() to use the ZLIB_ROOT variable, if available.
