@@ -36,6 +36,7 @@ struct InputModel {
 
     struct InputState {
         std::string text;
+        std::string compositionText;
         int cursor = 0;
         int selectionStart = 0;
         int selectionEnd = 0;
@@ -46,6 +47,7 @@ struct InputModel {
         float horizontalScroll = 0.0f;
         float verticalScroll = 0.0f;
         unsigned long long textRevision = 0;
+        unsigned long long compositionRevision = 0;
         core::Rect lastBounds;
         unsigned long long cachedTextRevision = static_cast<unsigned long long>(-1);
         std::string cachedFontFamily;
@@ -804,6 +806,8 @@ struct InputModel {
         key += std::to_string(static_cast<int>(std::lround(state.verticalScroll * 64.0f)));
         key += '|';
         key += std::to_string(state.textRevision);
+        key += '|';
+        key += std::to_string(state.compositionRevision);
         return key;
     }
 

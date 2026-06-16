@@ -1,6 +1,8 @@
 #include "core/window/window_backend.h"
 #include "core/platform/native_bridge.h"
 
+#include <algorithm>
+
 #if defined(EUI_WINDOW_BACKEND_SDL2)
 
 #include <SDL.h>
@@ -180,8 +182,10 @@ void setImeCursorRect(Handle window, float x, float y, float width, float height
     if (hwnd != nullptr) {
         HIMC context = ImmGetContext(hwnd);
         if (context != nullptr) {
+            const double fontHeight = std::max(12.0f, height);
             const LONG caretX = roundLong(x);
             const LONG caretY = roundLong(y + height);
+            const LONG candidateY = roundLong(y + height * 0.45f);
 
             COMPOSITIONFORM composition{};
             composition.dwStyle = CFS_FORCE_POSITION;
@@ -197,9 +201,15 @@ void setImeCursorRect(Handle window, float x, float y, float width, float height
             candidate.dwIndex = 0;
             candidate.dwStyle = CFS_CANDIDATEPOS;
             candidate.ptCurrentPos.x = caretX;
-            candidate.ptCurrentPos.y = caretY;
+            candidate.ptCurrentPos.y = candidateY;
             candidate.rcArea = composition.rcArea;
             ImmSetCandidateWindow(context, &candidate);
+            LOGFONTW font{};
+            font.lfHeight = -roundLong(static_cast<float>(fontHeight));
+            font.lfCharSet = DEFAULT_CHARSET;
+            font.lfQuality = CLEARTYPE_QUALITY;
+            wcscpy_s(font.lfFaceName, LF_FACESIZE, L"Microsoft YaHei UI");
+            ImmSetCompositionFontW(context, &font);
 
             ImmReleaseContext(hwnd, context);
         }
@@ -351,7 +361,7 @@ void setWindowIcon(Handle window, int width, int height, unsigned char* pixels) 
 }
 
 void setImeCursorRect(Handle window, float x, float y, float width, float height) {
-    eui_ime_set_cursor_rect(static_cast<GLFWwindow*>(window), x, y, width, height);
+    eui_ime_set_cursor_rect_with_font(static_cast<GLFWwindow*>(window), x, y, width, height, height);
 }
 
 } // namespace core::window

@@ -28,6 +28,7 @@ struct PointerEvent {
 struct KeyboardEvent {
     std::string text;
     std::string pasteText;
+    std::string compositionText;
     bool backspace = false;
     bool del = false;
     bool enter = false;
@@ -45,9 +46,10 @@ struct KeyboardEvent {
     bool shift = false;
     bool escape = false;
     bool composing = false;
+    bool compositionChanged = false;
 
     bool hasInput() const {
-        return !text.empty() || !pasteText.empty() || backspace || del || enter ||
+        return !text.empty() || !pasteText.empty() || compositionChanged || composing || !compositionText.empty() || backspace || del || enter ||
                left || right || up || down || home || end || selectAll || copy || cut ||
                undo || redo || escape;
     }

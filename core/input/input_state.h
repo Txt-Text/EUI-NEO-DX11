@@ -22,6 +22,7 @@ namespace detail {
 struct InputQueue {
     std::string text;
     std::string pasteText;
+    std::string compositionText;
     double scrollX = 0.0;
     double scrollY = 0.0;
     bool backspace = false;
@@ -40,6 +41,7 @@ struct InputQueue {
     bool redo = false;
     bool shift = false;
     bool escape = false;
+    bool compositionChanged = false;
 };
 
 struct PointerState {
@@ -64,6 +66,11 @@ inline std::unordered_map<window::Handle, bool>& composingStates() {
     return states;
 }
 
+inline std::unordered_map<window::Handle, std::string>& compositionTextStates() {
+    static std::unordered_map<window::Handle, std::string> states;
+    return states;
+}
+
 inline InputQueue& inputQueue(window::Handle window) {
     return inputQueues()[window];
 }
@@ -77,8 +84,17 @@ inline bool isComposing(window::Handle window) {
     return it != composingStates().end() && it->second;
 }
 
+inline std::string compositionText(window::Handle window) {
+    const auto it = compositionTextStates().find(window);
+    return it == compositionTextStates().end() ? std::string{} : it->second;
+}
+
 inline void setComposing(window::Handle window, bool composing) {
     composingStates()[window] = composing;
+}
+
+inline void setCompositionText(window::Handle window, const std::string& text) {
+    compositionTextStates()[window] = text;
 }
 
 inline void appendUtf8(std::string& output, unsigned int codepoint) {
@@ -107,11 +123,18 @@ inline void appendUtf8(std::string& output, unsigned int codepoint) {
 inline void queueTextInput(window::Handle window, const std::string& text) {
     detail::InputQueue& queue = detail::inputQueue(window);
     queue.text += text;
+    queue.compositionText.clear();
+    queue.compositionChanged = true;
     detail::setComposing(window, false);
+    detail::setCompositionText(window, {});
 }
 
 inline void queueTextEditing(window::Handle window, const std::string& text) {
+    detail::InputQueue& queue = detail::inputQueue(window);
+    queue.compositionText = text;
+    queue.compositionChanged = true;
     detail::setComposing(window, !text.empty());
+    detail::setCompositionText(window, text);
 }
 
 inline void queueScrollInput(window::Handle window, double x, double y) {
@@ -174,10 +197,14 @@ inline void installInputCallbacks(window::Handle window) {
 
 #if !defined(EUI_WINDOW_BACKEND_SDL2)
     GLFWwindow* glfwWindow = static_cast<GLFWwindow*>(window);
+    eui_ime_install_message_filter(glfwWindow);
     glfwSetCharCallback(glfwWindow, [](GLFWwindow* currentWindow, unsigned int codepoint) {
         detail::InputQueue& queue = detail::inputQueue(currentWindow);
         detail::appendUtf8(queue.text, codepoint);
+        queue.compositionText.clear();
+        queue.compositionChanged = true;
         detail::setComposing(currentWindow, false);
+        detail::setCompositionText(currentWindow, {});
     });
 
     glfwSetScrollCallback(glfwWindow, [](GLFWwindow* currentWindow, double xoffset, double yoffset) {
@@ -219,9 +246,13 @@ inline void installInputCallbacks(window::Handle window) {
 
 inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle window) {
     detail::InputQueue& queue = detail::inputQueue(window);
+    const bool wasComposing = detail::isComposing(window);
+    const std::string previousCompositionText = detail::compositionText(window);
+    const bool queuedCompositionChanged = queue.compositionChanged;
     KeyboardEvent keyboard;
     keyboard.text = std::move(queue.text);
     keyboard.pasteText = std::move(queue.pasteText);
+    keyboard.compositionText = std::move(queue.compositionText);
     keyboard.backspace = queue.backspace;
     keyboard.del = queue.del;
     keyboard.enter = queue.enter;
@@ -239,6 +270,29 @@ inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle w
     keyboard.shift = queue.shift;
     keyboard.escape = queue.escape;
     keyboard.composing = detail::isComposing(window);
+    if (!queuedCompositionChanged && keyboard.composing) {
+        keyboard.compositionText = previousCompositionText;
+    }
+#if !defined(EUI_WINDOW_BACKEND_SDL2) && defined(_WIN32)
+    char compositionBuffer[512];
+    const int compositionLength = eui_ime_get_composition_string_utf8(
+        static_cast<GLFWwindow*>(window),
+        compositionBuffer,
+        static_cast<int>(sizeof(compositionBuffer)));
+    if (compositionLength > 0) {
+        keyboard.compositionText = compositionBuffer;
+        keyboard.composing = true;
+        detail::setComposing(window, true);
+    } else if (!queuedCompositionChanged) {
+        keyboard.compositionText.clear();
+        keyboard.composing = false;
+        detail::setComposing(window, false);
+    }
+#endif
+    keyboard.compositionChanged = queuedCompositionChanged ||
+                                  wasComposing != keyboard.composing ||
+                                  previousCompositionText != keyboard.compositionText;
+    detail::setCompositionText(window, keyboard.compositionText);
 
     ScrollEvent scroll{queue.scrollX, queue.scrollY};
     queue = {};
@@ -265,9 +319,15 @@ inline bool hasPendingPointerInput(window::Handle window, float dpiScale = 1.0f)
 }
 
 inline void releaseInputQueue(window::Handle window) {
+#if !defined(EUI_WINDOW_BACKEND_SDL2)
+    if (window != nullptr) {
+        eui_ime_uninstall_message_filter(static_cast<GLFWwindow*>(window));
+    }
+#endif
     detail::inputQueues().erase(window);
     detail::pointerStates().erase(window);
     detail::composingStates().erase(window);
+    detail::compositionTextStates().erase(window);
 }
 
 inline PointerEvent readPointerEvent(window::Handle window, float dpiScale = 1.0f) {
