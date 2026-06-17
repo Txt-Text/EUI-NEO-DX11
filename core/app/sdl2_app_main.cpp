@@ -161,7 +161,7 @@ void hideToTray(SDL_Window* window, WindowState& state) {
     }
     SDL_HideWindow(window);
     state.hiddenToTray = true;
-    state.needsRender = false;
+    state.paintRequested = false;
 }
 
 void restoreFromTray(SDL_Window* window, WindowState& state) {
@@ -171,7 +171,7 @@ void restoreFromTray(SDL_Window* window, WindowState& state) {
     SDL_ShowWindow(window);
     SDL_RaiseWindow(window);
     state.hiddenToTray = false;
-    state.needsRender = true;
+    state.paintRequested = true;
 }
 
 void requestClose(SDL_Window* window, WindowState& state) {
@@ -192,7 +192,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
             return;
         }
         core::queueTextInput(window, event.text.text);
-        state.needsRender = true;
+        state.paintRequested = true;
         return;
     }
     if (event.type == SDL_TEXTEDITING) {
@@ -200,7 +200,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
             return;
         }
         core::queueTextEditing(window, event.edit.text);
-        state.needsRender = true;
+        state.paintRequested = true;
         return;
     }
     if (event.type == SDL_MOUSEWHEEL) {
@@ -208,7 +208,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
             return;
         }
         core::queueScrollInput(window, event.wheel.preciseX, event.wheel.preciseY);
-        state.needsRender = true;
+        state.paintRequested = true;
         return;
     }
     if (event.type == SDL_KEYDOWN) {
@@ -220,7 +220,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
         core::InputKey key;
         if (mapKey(event.key.keysym.sym, key)) {
             core::queueKeyInput(window, key, ctrl, shift);
-            state.needsRender = true;
+            state.paintRequested = true;
         }
         if (event.key.keysym.sym == SDLK_ESCAPE && !state.trayAvailable) {
             state.running = false;
@@ -244,7 +244,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
         case SDL_WINDOWEVENT_SIZE_CHANGED:
         case SDL_WINDOWEVENT_SHOWN:
         case SDL_WINDOWEVENT_RESTORED:
-            state.needsRender = true;
+            state.paintRequested = true;
             break;
         default:
             break;
@@ -349,17 +349,17 @@ ManagedWindow* findModalWindow(app::DslWindowManager<ManagedWindow>& windows) {
 void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
     if (event.type == SDL_TEXTINPUT) {
         core::queueTextInput(managed.window, event.text.text);
-        managed.content.markNeedsRender();
+        managed.content.requestPaint();
         return;
     }
     if (event.type == SDL_TEXTEDITING) {
         core::queueTextEditing(managed.window, event.edit.text);
-        managed.content.markNeedsRender();
+        managed.content.requestPaint();
         return;
     }
     if (event.type == SDL_MOUSEWHEEL) {
         core::queueScrollInput(managed.window, event.wheel.preciseX, event.wheel.preciseY);
-        managed.content.markNeedsRender();
+        managed.content.requestPaint();
         return;
     }
     if (event.type == SDL_KEYDOWN) {
@@ -368,7 +368,7 @@ void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
         core::InputKey key;
         if (mapKey(event.key.keysym.sym, key)) {
             core::queueKeyInput(managed.window, key, ctrl, shift);
-            managed.content.markNeedsRender();
+            managed.content.requestPaint();
         }
         if (event.key.keysym.sym == SDLK_ESCAPE) {
             managed.closeRequested = true;
@@ -383,12 +383,12 @@ void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
                    event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
                    event.window.event == SDL_WINDOWEVENT_SHOWN ||
                    event.window.event == SDL_WINDOWEVENT_RESTORED) {
-            managed.content.markNeedsRender();
+            managed.content.requestPaint();
         }
     }
 }
 
-bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool externalReady) {
+bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool updateRequested) {
     if (managed.closeRequested || managed.window == nullptr || managed.renderBackend == nullptr) {
         return false;
     }
@@ -405,8 +405,8 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool extern
     const float logicalWidth = static_cast<float>(drawableWidth) / dpi;
     const float logicalHeight = static_cast<float>(drawableHeight) / dpi;
 
-    managed.content.update(managed.window, deltaSeconds, logicalWidth, logicalHeight, pointer, dpi, externalReady);
-    if (managed.content.needsRender()) {
+    managed.content.update(managed.window, deltaSeconds, logicalWidth, logicalHeight, pointer, dpi, updateRequested);
+    if (managed.content.paintRequested()) {
         managed.renderBackend->beginFrame({
             managed.window,
             core::window::nativeWindowInfo(managed.window),
@@ -565,9 +565,9 @@ int main() {
             [&] {
                 createRequestedWindows(childWindows, window, *renderBackend, app::consumeWindowRequests());
             },
-            [&](float frameDelta, bool frameExternalReady) {
+            [&](float frameDelta, bool updateRequested) {
                 childWindows.updateAll([&](ManagedWindow& managed) {
-                    updateManagedWindow(managed, frameDelta, frameExternalReady);
+                    updateManagedWindow(managed, frameDelta, updateRequested);
                 });
                 createRequestedWindows(childWindows, window, *renderBackend, app::consumeWindowRequests());
             },

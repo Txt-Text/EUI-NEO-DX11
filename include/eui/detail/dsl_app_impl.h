@@ -201,7 +201,7 @@ const char* trayIconPath() {
 }
 
 void requestUpdate() {
-    core::platform::requestUpdate();
+    core::platform::requestUiUpdate();
 }
 
 bool initialize(core::window::Handle window) {
@@ -220,15 +220,15 @@ bool initialize(core::window::Handle window) {
 
 bool update(core::window::Handle window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale) {
     const bool asyncReady = core::async::dispatchReady();
-    const bool updateRequested = core::platform::consumeUpdateRequest();
+    const bool updateRequested = core::platform::consumeUiUpdate();
     return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, updateRequested || asyncReady);
 }
 
-bool update(core::window::Handle window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool externalReady) {
-    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, externalReady, true);
+bool update(core::window::Handle window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool updateRequested) {
+    return update(window, deltaSeconds, windowWidth, windowHeight, dpiScale, pointerScale, updateRequested, true);
 }
 
-bool update(core::window::Handle window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool externalReady, bool inputEnabled) {
+bool update(core::window::Handle window, float deltaSeconds, int windowWidth, int windowHeight, float dpiScale, float pointerScale, bool updateRequested, bool inputEnabled) {
     if (windowWidth <= 0 || windowHeight <= 0 || dpiScale <= 0.0f) {
         return false;
     }
@@ -252,14 +252,14 @@ bool update(core::window::Handle window, float deltaSeconds, int windowWidth, in
     }
 
     bool changed = false;
-    if (externalReady) {
+    if (updateRequested) {
         composeFrame();
-        detail::dslRuntime().markFullRedraw();
+        detail::dslRuntime().requestFullPaint();
         changed = true;
     }
 
     changed = detail::dslRuntime().update(window, deltaSeconds, pointerScale, dpiScale, inputEnabled) || changed;
-    if (detail::dslRuntime().needsCompose()) {
+    if (detail::dslRuntime().composeRequested()) {
         composeFrame();
         changed = detail::dslRuntime().update(window, 0.0f, pointerScale, dpiScale, inputEnabled) || changed;
         changed = true;

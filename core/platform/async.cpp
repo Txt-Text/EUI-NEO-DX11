@@ -1,5 +1,5 @@
 #include "core/platform/async.h"
-#include "core/window/window_backend.h"
+#include "core/platform/platform.h"
 
 #include <algorithm>
 #include <condition_variable>
@@ -67,7 +67,7 @@ void ensureWorkersLocked() {
 }
 
 void postReadyEvent() {
-    window::postEmptyEvent();
+    platform::requestFrame();
 }
 
 } // namespace

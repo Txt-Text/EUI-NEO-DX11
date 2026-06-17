@@ -203,8 +203,8 @@ inline void Runtime::setFocusedId(const std::string& id) {
             newElement->onFocusChanged(true);
         }
     }
-    needsCompose_ = true;
-    needsRender_ = true;
+    composeRequested_ = true;
+    paintRequested_ = true;
 }
 
 inline void Runtime::updateScroll(const ScrollEvent& event, const std::string& targetId) {
@@ -219,8 +219,8 @@ inline void Runtime::updateScroll(const ScrollEvent& event, const std::string& t
         }
         if (element->onScroll && !element->disabled) {
             element->onScroll(event);
-            needsCompose_ = true;
-            needsRender_ = true;
+            composeRequested_ = true;
+            paintRequested_ = true;
         }
     }
 }
@@ -238,8 +238,8 @@ inline void Runtime::updateTextInput(const KeyboardEvent& event) {
     if (const Element* element = ui_.find(focusedId_)) {
         if (element->onTextInput && !element->disabled) {
             element->onTextInput(event);
-            needsCompose_ = true;
-            needsRender_ = true;
+            composeRequested_ = true;
+            paintRequested_ = true;
         }
     }
 }
@@ -306,8 +306,8 @@ inline void Runtime::updateInteraction(
 
     if (enabled && wasHover != instance.state.hover && element.onHoverChanged) {
         element.onHoverChanged(instance.state.hover);
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.hover && element.cursor == CursorShape::Hand) {
@@ -328,8 +328,8 @@ inline void Runtime::updateInteraction(
             bounds.height / dpiScale
         };
         if (element.onMove(logicalEvent, logicalBounds)) {
-            needsCompose_ = true;
-            needsRender_ = true;
+            composeRequested_ = true;
+            paintRequested_ = true;
         }
     }
 
@@ -346,45 +346,45 @@ inline void Runtime::updateInteraction(
             bounds.height / dpiScale
         };
         element.onContextMenu(logicalEvent, logicalBounds);
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.pressStarted && !element.scrollDragSourceId.empty()) {
         beginRuntimeScrollDrag(element);
-        needsRender_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.pressStarted && !element.sliderInputSourceId.empty()) {
         updateRuntimeSlider(element, event.x, dpiScale, true);
-        needsRender_ = true;
+        paintRequested_ = true;
         return;
     }
 
     if (enabled && instance.state.pressStarted && element.onPress) {
         element.onPress(event, bounds);
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.clicked && element.onClick) {
         element.onClick();
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.released && element.onRelease) {
         element.onRelease(event, bounds);
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 
     if (enabled && instance.state.released && !element.sliderInputSourceId.empty()) {
         if (auto state = sliderStates_.find(element.sliderInputSourceId); state != sliderStates_.end()) {
             state->second.dragging = false;
         }
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
         return;
     }
 
@@ -410,8 +410,8 @@ inline void Runtime::updateInteraction(
             instance.state.dragDeltaX,
             instance.state.dragDeltaY
         });
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     }
 }
 

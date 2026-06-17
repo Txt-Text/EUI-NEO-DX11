@@ -244,7 +244,7 @@ void requestText(const std::string& key, const std::string& url) {
                 state.ok = result.ok;
                 state.body = result.ok ? result.value : std::string{};
             }
-            platform::requestUpdate();
+            platform::requestUiUpdate();
         });
 }
 

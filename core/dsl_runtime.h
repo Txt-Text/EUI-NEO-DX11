@@ -42,9 +42,9 @@ public:
 
     bool isAnimating() const;
 
-    bool needsCompose() const;
+    bool composeRequested() const;
 
-    void markFullRedraw();
+    void requestFullPaint();
 
     void render(int windowWidth, int windowHeight, float dpiScale, const Color& clearColor);
 
@@ -341,10 +341,10 @@ private:
     std::unordered_map<std::string, runtime::FrameTargetInstance> frameTargets_;
     std::vector<runtime::ElementSnapshot> elementStructure_;
     std::vector<runtime::LogicalDirtyRect> dirtyRects_;
-    bool needsRender_ = true;
+    bool paintRequested_ = true;
     bool animating_ = false;
-    bool needsCompose_ = false;
-    bool fullRedraw_ = true;
+    bool composeRequested_ = false;
+    bool fullPaintRequested_ = true;
     bool wantsHandCursor_ = false;
     std::string focusedId_;
     float logicalWidth_ = 0.0f;

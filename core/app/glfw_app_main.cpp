@@ -160,7 +160,7 @@ void hideWindowToTray(GLFWwindow* window, WindowState& windowState, core::render
     glfwHideWindow(window);
     windowState.hiddenToTray = true;
     windowState.hideToTrayRequested = false;
-    windowState.needsRender = false;
+    windowState.paintRequested = false;
     windowState.renderedFrames = 0;
     windowState.nextFrameTime = glfwGetTime();
 }
@@ -175,7 +175,7 @@ void restoreWindowFromTray(GLFWwindow* window, WindowState& windowState) {
     glfwFocusWindow(window);
     windowState.hiddenToTray = false;
     windowState.hideToTrayRequested = false;
-    windowState.needsRender = true;
+    windowState.paintRequested = true;
     windowState.nextFrameTime = glfwGetTime();
 }
 
@@ -184,20 +184,20 @@ void installWindowCallbacks(GLFWwindow* window, WindowState& windowState) {
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* currentWindow, int w, int h) {
         (void)w;
         (void)h;
-        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->needsRender = true;
+        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
     });
     glfwSetWindowRefreshCallback(window, [](GLFWwindow* currentWindow) {
-        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->needsRender = true;
+        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
     });
     glfwSetWindowContentScaleCallback(window, [](GLFWwindow* currentWindow, float, float) {
-        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->needsRender = true;
+        static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
     });
     glfwSetWindowFocusCallback(window, [](GLFWwindow* currentWindow, int focused) {
         WindowState* state = static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow));
         if (!state) {
             return;
         }
-        state->needsRender = true;
+        state->paintRequested = true;
         if (focused && state->modalChildWindow != nullptr && !glfwWindowShouldClose(state->modalChildWindow)) {
             glfwFocusWindow(state->modalChildWindow);
         }
@@ -240,7 +240,7 @@ std::unique_ptr<ManagedWindow> createManagedWindow(const app::DslWindowRequest& 
         return {};
     }
 
-    managed->state.needsRender = true;
+    managed->state.paintRequested = true;
     if (managed->content.request().modal) {
         glfwFocusWindow(childWindow);
     }
@@ -270,7 +270,7 @@ void destroyManagedWindow(std::unique_ptr<ManagedWindow>& managed) {
     managed.reset();
 }
 
-bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool externalReady) {
+bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool updateRequested) {
     if (managed.window == nullptr || glfwWindowShouldClose(managed.window)) {
         return false;
     }
@@ -281,7 +281,7 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool extern
     int framebufferHeight = 0;
     glfwGetFramebufferSize(managed.window, &framebufferWidth, &framebufferHeight);
     if (framebufferWidth <= 0 || framebufferHeight <= 0) {
-        managed.state.needsRender = true;
+        managed.state.paintRequested = true;
         return true;
     }
 
@@ -290,11 +290,11 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool extern
     const float logicalWidth = static_cast<float>(framebufferWidth) / dpiScale;
     const float logicalHeight = static_cast<float>(framebufferHeight) / dpiScale;
 
-    if (managed.content.update(managed.window, deltaSeconds, logicalWidth, logicalHeight, pointerScale, dpiScale, externalReady)) {
-        managed.state.needsRender = true;
+    if (managed.content.update(managed.window, deltaSeconds, logicalWidth, logicalHeight, pointerScale, dpiScale, updateRequested)) {
+        managed.state.paintRequested = true;
     }
 
-    if (managed.state.needsRender || managed.content.needsRender()) {
+    if (managed.state.paintRequested || managed.content.paintRequested()) {
         managed.renderBackend->beginFrame({
             managed.window,
             core::window::nativeWindowInfo(managed.window),
@@ -304,7 +304,7 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool extern
         });
         managed.content.render(*managed.renderBackend, framebufferWidth, framebufferHeight, dpiScale);
         managed.renderBackend->present();
-        managed.state.needsRender = false;
+        managed.state.paintRequested = false;
         ++managed.state.renderedFrames;
     }
     return true;
@@ -473,9 +473,9 @@ int main() {
                 pruneClosedWindows(childWindows);
                 windowState.modalChildWindow = findModalChildWindow(childWindows);
             },
-            [&](float frameDelta, bool frameExternalReady) {
+            [&](float frameDelta, bool updateRequested) {
                 childWindows.updateAll([&](ManagedWindow& managed) {
-                    updateManagedWindow(managed, frameDelta, frameExternalReady);
+                    updateManagedWindow(managed, frameDelta, updateRequested);
                 });
 
                 createRequestedWindows(childWindows, window, *renderBackend, app::consumeWindowRequests());

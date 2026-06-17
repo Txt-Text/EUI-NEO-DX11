@@ -20,11 +20,11 @@ struct LogicalDirtyRect {
 } // namespace runtime
 
 inline std::vector<Rect> resolveDirtyRects(const std::vector<runtime::LogicalDirtyRect>& dirtyRects,
-                                           bool fullRedraw,
+                                           bool fullPaintRequested,
                                            int windowWidth,
                                            int windowHeight,
                                            float dpiScale) {
-    if (fullRedraw) {
+    if (fullPaintRequested) {
         return {};
     }
 

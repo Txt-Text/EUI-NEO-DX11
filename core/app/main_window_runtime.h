@@ -40,10 +40,12 @@ public:
                   SetTitleFn&& setTitle,
                   ChildAnimatingFn&& childAnimating) {
         runner_.updateFrameInterval(refreshRate, now);
-        const bool externalReady = runner_.consumeExternalReady();
+        const bool updateRequested = runner_.consumeUpdateRequest();
+        const bool frameWakeRequested = runner_.consumeFrameRequest();
         const bool frameRequested =
-            runner_.needsRender ||
-            externalReady ||
+            runner_.paintRequested ||
+            updateRequested ||
+            frameWakeRequested ||
             runner_.anyAnimating(childAnimating()) ||
             core::hasPendingPointerInput(window, metrics.pointerScale);
         while (frameRequested) {
@@ -61,17 +63,17 @@ public:
                         renderBackend,
                         metrics,
                         deltaSeconds,
-                        externalReady,
+                        updateRequested,
                         inputEnabled,
                         std::forward<AfterUpdateFn>(afterUpdate));
 
-        updateChildren(deltaSeconds, externalReady);
+        updateChildren(deltaSeconds, updateRequested);
         runner_.updateFrameTitle(core::window::timeSeconds(), std::forward<SetTitleFn>(setTitle));
         runner_.advanceFrameClock(core::window::timeSeconds(), runner_.anyAnimating(childAnimating()));
     }
 
     void markUnavailableFrame(double now) {
-        runner_.needsRender = true;
+        runner_.paintRequested = true;
         runner_.resetTiming(now);
     }
 
@@ -80,11 +82,11 @@ public:
                          core::render::RenderBackend& renderBackend,
                          const MainWindowMetrics& metrics,
                          float deltaSeconds,
-                         bool externalReady,
+                         bool updateRequested,
                          bool inputEnabled,
                          AfterUpdateFn&& afterUpdate) {
         if (!metrics.valid()) {
-            runner_.needsRender = true;
+            runner_.paintRequested = true;
             return false;
         }
 
@@ -95,14 +97,14 @@ public:
                         metrics.framebufferHeight,
                         metrics.dpiScale,
                         metrics.pointerScale,
-                        externalReady,
+                        updateRequested,
                         inputEnabled)) {
-            runner_.needsRender = true;
+            runner_.paintRequested = true;
         }
 
         afterUpdate();
 
-        if (!runner_.needsRender) {
+        if (!runner_.paintRequested) {
             return false;
         }
 

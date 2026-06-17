@@ -7,7 +7,7 @@ inline void Runtime::addDirtyRect(const Rect& rect) {
         return;
     }
     dirtyRects_.push_back({rect.x, rect.y, rect.width, rect.height});
-    needsRender_ = true;
+    paintRequested_ = true;
 }
 
 inline void Runtime::addDirtyUnion(const Rect& before, const Rect& after) {
@@ -15,7 +15,7 @@ inline void Runtime::addDirtyUnion(const Rect& before, const Rect& after) {
 }
 
 inline void Runtime::promoteBackdropBlurDirtyRegions(float dpiScale) {
-    if (fullRedraw_ || dirtyRects_.empty()) {
+    if (fullPaintRequested_ || dirtyRects_.empty()) {
         return;
     }
 
@@ -45,7 +45,7 @@ inline void Runtime::promoteBackdropBlurDirtyRegions(float dpiScale) {
     if (expandedAny) {
         dirtyRects_.clear();
         dirtyRects_.push_back({mergedDirty.x, mergedDirty.y, mergedDirty.width, mergedDirty.height});
-        needsRender_ = true;
+        paintRequested_ = true;
     }
 }
 
@@ -199,7 +199,7 @@ inline void Runtime::updateDependentVisualDirtyRegions(
         auto item = dependentVisualStates_.find(element.id);
         if (item == dependentVisualStates_.end()) {
             dependentVisualStates_.emplace(element.id, current);
-            if (!fullRedraw_ && current.opacity > 0.001f) {
+            if (!fullPaintRequested_ && current.opacity > 0.001f) {
                 addDirtyRect(current.rect);
             }
         } else {
@@ -412,8 +412,8 @@ inline void Runtime::updateTimer(const Element& element, float deltaSeconds) {
     if (instance.elapsed >= instance.seconds) {
         instance.active = false;
         element.onTimer();
-        needsCompose_ = true;
-        needsRender_ = true;
+        composeRequested_ = true;
+        paintRequested_ = true;
     } else {
         animating_ = true;
     }
@@ -424,8 +424,8 @@ inline void Runtime::updateFrameCallback(const Element& element, float deltaSeco
         return;
     }
     element.onFrame(std::max(0.0f, deltaSeconds));
-    needsCompose_ = true;
-    needsRender_ = true;
+    composeRequested_ = true;
+    paintRequested_ = true;
     animating_ = true;
 }
 
@@ -645,7 +645,7 @@ inline void Runtime::setSliderValue(const std::string& stateId, float value, boo
 
     instance.value = next;
     addSliderDirtyRect(instance);
-    needsRender_ = true;
+    paintRequested_ = true;
     if (const Element* owner = ui_.find(stateId)) {
         if (owner->onSliderValueChanged && !owner->disabled) {
             owner->onSliderValueChanged(instance.value);

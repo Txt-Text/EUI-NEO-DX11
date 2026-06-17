@@ -545,7 +545,7 @@ components::button(ui, "save")
 - 处理 DPI scale。
 - render / shutdown。
 
-纯 hover / press / transition 视觉变化不会重新 compose 页面。click 回调通常会修改 app 状态，因此 Runtime 会设置 `needsCompose()`，`include/eui/dsl_app.h` 再重新 compose 并保守触发 full redraw。
+纯 hover / press / transition 视觉变化不会重新 compose 页面。click 回调通常会修改 app 状态，因此 Runtime 会设置 `composeRequested()`，`include/eui/dsl_app.h` 再重新 compose 并保守触发 full paint。
 
 ## 当前限制
 

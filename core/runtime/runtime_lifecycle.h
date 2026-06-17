@@ -34,13 +34,13 @@ inline void Runtime::compose(const std::string& pageId, float logicalWidth, floa
     }
 
     if (elementStructure_ != previousStructure) {
-        needsRender_ = true;
-        fullRedraw_ = true;
+        paintRequested_ = true;
+        fullPaintRequested_ = true;
     }
 
     if (logicalWidth_ != logicalWidth || logicalHeight_ != logicalHeight) {
-        needsRender_ = true;
-        fullRedraw_ = true;
+        paintRequested_ = true;
+        fullPaintRequested_ = true;
     }
     logicalWidth_ = logicalWidth;
     logicalHeight_ = logicalHeight;
@@ -66,13 +66,13 @@ inline bool Runtime::update(core::window::Handle window, float deltaSeconds, flo
         scrollEvent = {};
     }
     animating_ = false;
-    needsCompose_ = false;
+    composeRequested_ = false;
     wantsHandCursor_ = false;
     markInstancesUnseen();
     markTimersUnseen();
     if (ImagePrimitive::consumeRemoteImageReady()) {
-        fullRedraw_ = true;
-        needsRender_ = true;
+        fullPaintRequested_ = true;
+        paintRequested_ = true;
     }
 
     syncScrollStateBindings();
@@ -99,8 +99,8 @@ inline bool Runtime::update(core::window::Handle window, float deltaSeconds, flo
     promoteBackdropBlurDirtyRegions(dpiScale);
     releaseUnseenInstances();
 
-    const bool result = needsRender_;
-    needsRender_ = false;
+    const bool result = paintRequested_;
+    paintRequested_ = false;
     return result;
 }
 
@@ -108,13 +108,13 @@ inline bool Runtime::isAnimating() const {
     return animating_;
 }
 
-inline bool Runtime::needsCompose() const {
-    return needsCompose_;
+inline bool Runtime::composeRequested() const {
+    return composeRequested_;
 }
 
-inline void Runtime::markFullRedraw() {
-    fullRedraw_ = true;
-    needsRender_ = true;
+inline void Runtime::requestFullPaint() {
+    fullPaintRequested_ = true;
+    paintRequested_ = true;
 }
 
 inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, const Color& clearColor) {
@@ -127,22 +127,22 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         renderBackend->clear(clearColor);
         renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale);
         dirtyRects_.clear();
-        fullRedraw_ = false;
+        fullPaintRequested_ = false;
         return;
     }
     if (renderBackend->renderCacheWasRecreated()) {
-        fullRedraw_ = true;
+        fullPaintRequested_ = true;
     }
 
-    const std::vector<Rect> dirtyRects = core::dsl::resolveDirtyRects(dirtyRects_, fullRedraw_, windowWidth, windowHeight, dpiScale);
-    if (dirtyRects.empty() && !fullRedraw_) {
+    const std::vector<Rect> dirtyRects = core::dsl::resolveDirtyRects(dirtyRects_, fullPaintRequested_, windowWidth, windowHeight, dpiScale);
+    if (dirtyRects.empty() && !fullPaintRequested_) {
         renderBackend->blitRenderCache(windowWidth, windowHeight);
         return;
     }
 
     renderBackend->beginRenderCacheFrame(windowWidth, windowHeight);
 
-    if (fullRedraw_) {
+    if (fullPaintRequested_) {
         renderBackend->setScissor(false, {}, windowHeight);
         renderBackend->clear(clearColor);
         renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale);
@@ -158,7 +158,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     renderBackend->endRenderCacheFrame();
     renderBackend->blitRenderCache(windowWidth, windowHeight);
     dirtyRects_.clear();
-    fullRedraw_ = false;
+    fullPaintRequested_ = false;
 }
 
 inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale) {
@@ -224,8 +224,8 @@ inline void Runtime::releaseGraphicsResources(bool releaseCachedImageTextures) {
         ImagePrimitive::releaseCachedTextures();
     }
     destroyCursors();
-    fullRedraw_ = true;
-    needsRender_ = true;
+    fullPaintRequested_ = true;
+    paintRequested_ = true;
 }
 
 inline void Runtime::applyCursor(core::window::Handle window) {

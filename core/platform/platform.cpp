@@ -63,7 +63,12 @@ TrayState& trayState() {
     return state;
 }
 
-std::atomic<bool>& updateRequested() {
+std::atomic<bool>& frameRequested() {
+    static std::atomic<bool> requested{false};
+    return requested;
+}
+
+std::atomic<bool>& uiUpdateRequested() {
     static std::atomic<bool> requested{false};
     return requested;
 }
@@ -717,13 +722,22 @@ void setImeCursorRect(window::Handle window, float x, float y, float width, floa
     core::window::setImeCursorRect(window, x, y, width, height);
 }
 
-void requestUpdate() {
-    updateRequested().store(true);
+void requestFrame() {
+    frameRequested().store(true);
     window::postEmptyEvent();
 }
 
-bool consumeUpdateRequest() {
-    return updateRequested().exchange(false);
+void requestUiUpdate() {
+    uiUpdateRequested().store(true);
+    requestFrame();
+}
+
+bool consumeUiUpdate() {
+    return uiUpdateRequested().exchange(false);
+}
+
+bool consumeFrameRequest() {
+    return frameRequested().exchange(false);
 }
 
 } // namespace core::platform

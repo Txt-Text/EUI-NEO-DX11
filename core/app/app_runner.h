@@ -13,7 +13,7 @@
 namespace app {
 
 struct AppRunner {
-    bool needsRender = true;
+    bool paintRequested = true;
     bool trayAvailable = false;
     bool hiddenToTray = false;
     int renderedFrames = 0;
@@ -65,10 +65,14 @@ struct AppRunner {
         return core::platform::consumeTrayShowRequested();
     }
 
-    bool consumeExternalReady() {
+    bool consumeUpdateRequest() {
         const bool asyncReady = core::async::dispatchReady();
-        const bool updateRequested = core::platform::consumeUpdateRequest();
+        const bool updateRequested = core::platform::consumeUiUpdate();
         return updateRequested || asyncReady;
+    }
+
+    bool consumeFrameRequest() {
+        return core::platform::consumeFrameRequest();
     }
 
     bool anyAnimating(bool childAnimating) const {
@@ -91,7 +95,7 @@ struct AppRunner {
     }
 
     void markRendered() {
-        needsRender = false;
+        paintRequested = false;
         ++renderedFrames;
         renderedSinceLastClock = true;
     }
