@@ -63,11 +63,13 @@ struct GallerySettingsPage {
     }
 
     void compose(eui::Ui& ui, float width, float height) {
+        (void)height;
         const float rowWidth = std::max(0.0f, std::min(width, 720.0f));
         const float sliderWidth = std::max(0.0f, rowWidth - 48.0f);
 
         ui.column("settings.list")
-            .size(rowWidth, std::min(height, 532.0f))
+            .width(rowWidth)
+            .height(eui::SizeValue::wrapContent())
             .gap(14.0f)
             .content([&] {
                 settingRow(ui, "setting.dense", "Dense layout", "Use tighter spacing for gallery pages.", optionDense, rowWidth, [] { optionDense = !optionDense; });
@@ -130,6 +132,7 @@ struct GallerySettingsPage {
 
                 settingRow(ui, "setting.unlockFps", "Unlock 90 FPS limit", "Let animation rendering use the display refresh rate.", optionUnlockFps, rowWidth, [] { optionUnlockFps = !optionUnlockFps; });
                 settingRow(ui, "setting.night", "Night mode", "Switch gallery between light and dark theme tokens.", optionNight, rowWidth, [] { optionNight = !optionNight; });
-            });
+            })
+            .build();
     }
 };
