@@ -93,7 +93,7 @@ void counterContent(eui::Ui& ui, const std::string& id, float width) {
         .content([&] {
             components::input(ui, id + ".input")
                 .size(width, 42.0f)
-                .text(textState.value)
+                .value(textState.value)
                 .placeholder("type here")
                 .onChange([&textState](const std::string& value) {
                     textState.value = value;

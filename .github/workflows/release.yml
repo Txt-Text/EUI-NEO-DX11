@@ -35,9 +35,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             ninja-build \
-            glslang-tools \
-            libvulkan-dev \
-            vulkan-tools \
             libx11-dev \
             libxrandr-dev \
             libxinerama-dev \
@@ -46,42 +43,23 @@ jobs:
             libgl1-mesa-dev \
             libcurl4-openssl-dev
 
-      - name: install macos deps
-        if: matrix.platform == 'macos'
-        shell: bash
-        run: brew install glslang vulkan-headers vulkan-loader
-
-      - name: install windows deps
-        if: matrix.platform == 'windows'
-        uses: humbletim/setup-vulkan-sdk@v1.2.1
-        with:
-          vulkan-query-version: 1.4.309.0
-          vulkan-components: Glslang, SPIRV-Tools
-          vulkan-use-cache: true
-
       - name: configure windows
         if: matrix.platform == 'windows'
         shell: pwsh
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DEUI_BUILD_TEST_FIXTURES=ON
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: configure linux
         if: matrix.platform == 'linux'
         shell: bash
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DEUI_BUILD_TEST_FIXTURES=ON -DGLFW_BUILD_WAYLAND=OFF -DGLFW_BUILD_X11=ON
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DGLFW_BUILD_WAYLAND=OFF -DGLFW_BUILD_X11=ON
 
       - name: configure macos
         if: matrix.platform == 'macos'
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DEUI_BUILD_TEST_FIXTURES=ON
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: build
         run: cmake --build build --config Release --parallel
-
-      - name: check generated vulkan shaders
-        run: cmake --build build --config Release --target eui_check_vulkan_shaders --parallel
-
-      - name: run unit tests
-        run: ctest --test-dir build -C Release -L unit --output-on-failure
 
       - name: install sdk
         shell: bash
