@@ -146,6 +146,7 @@ void VulkanRenderBackend::transitionImageLayout(VkCommandBuffer commandBuffer,
     if (image == VK_NULL_HANDLE || oldLayout == newLayout) {
         return;
     }
+    ++core::render::currentRenderFrameStats().backendBarriers;
 
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -174,7 +175,7 @@ void VulkanRenderBackend::transitionImageLayout(VkCommandBuffer commandBuffer,
                          &barrier);
 }
 
-VkRect2D VulkanRenderBackend::clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) {
+VkRect2D VulkanRenderBackend::clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) const {
     const float maxWidth = static_cast<float>(std::max(0, windowWidth));
     const float maxHeight = static_cast<float>(std::max(0, windowHeight));
     const float left = std::clamp(std::floor(rect.x), 0.0f, maxWidth);
@@ -330,6 +331,8 @@ void VulkanRenderBackend::present() {
     if (!frameActive_) {
         return;
     }
+    core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
+    stats.backendIncrementalPresentSupported = incrementalPresentSupported_ ? 1 : 0;
     if (!frameRecorded_) {
         recordClearPass(clearColor_);
     }
@@ -358,6 +361,7 @@ void VulkanRenderBackend::present() {
         renderPassActive_ = false;
         return;
     }
+    ++core::render::currentRenderFrameStats().backendSubmits;
 
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -366,7 +370,44 @@ void VulkanRenderBackend::present() {
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &swapchain_;
     presentInfo.pImageIndices = &currentImage_;
+    std::vector<VkRectLayerKHR> presentRects;
+    VkPresentRegionKHR presentRegion{};
+    VkPresentRegionsKHR presentRegions{};
+    if (incrementalPresentSupported_ && !presentDirtyRects_.empty()) {
+        presentRects.reserve(presentDirtyRects_.size());
+        for (const core::Rect& rect : presentDirtyRects_) {
+            const VkRect2D vkRect = clampScissor(rect,
+                                                 static_cast<int>(swapchainExtent_.width),
+                                                 static_cast<int>(swapchainExtent_.height));
+            if (vkRect.extent.width == 0 || vkRect.extent.height == 0) {
+                continue;
+            }
+            presentRects.push_back({vkRect.offset, vkRect.extent, 0});
+        }
+        if (!presentRects.empty()) {
+            presentRegion.rectangleCount = static_cast<std::uint32_t>(presentRects.size());
+            presentRegion.pRectangles = presentRects.data();
+            presentRegions.sType = VK_STRUCTURE_TYPE_PRESENT_REGIONS_KHR;
+            presentRegions.swapchainCount = 1;
+            presentRegions.pRegions = &presentRegion;
+            presentInfo.pNext = &presentRegions;
+            ++stats.backendIncrementalPresents;
+        }
+    }
+    if (!presentRects.empty()) {
+        std::uint64_t presentPixels = 0;
+        for (const VkRectLayerKHR& rect : presentRects) {
+            presentPixels += static_cast<std::uint64_t>(rect.extent.width) *
+                             static_cast<std::uint64_t>(rect.extent.height);
+        }
+        stats.backendPresentPixels += presentPixels;
+    } else {
+        stats.backendPresentPixels += static_cast<std::uint64_t>(swapchainExtent_.width) *
+                                      static_cast<std::uint64_t>(swapchainExtent_.height);
+    }
     const VkResult presentResult = vkQueuePresentKHR(presentQueue_, &presentInfo);
+    ++stats.backendPresents;
+    presentDirtyRects_.clear();
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
         swapchainExtent_ = {};
     }
@@ -514,8 +555,12 @@ bool VulkanRenderBackend::createDevice() {
     queueInfo.queueCount = 1;
     queueInfo.pQueuePriorities = &priority;
 
-    std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     const std::vector<VkExtensionProperties> availableExtensions = deviceExtensions(physicalDevice_);
+    std::vector<const char*> extensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const bool enableIncrementalPresent = hasExtension(availableExtensions, VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME);
+    if (enableIncrementalPresent) {
+        extensions.push_back(VK_KHR_INCREMENTAL_PRESENT_EXTENSION_NAME);
+    }
     if (hasExtension(availableExtensions, "VK_KHR_portability_subset")) {
         extensions.push_back("VK_KHR_portability_subset");
     }
@@ -531,6 +576,7 @@ bool VulkanRenderBackend::createDevice() {
     }
     vkGetDeviceQueue(device_, graphicsFamily_, 0, &graphicsQueue_);
     presentQueue_ = graphicsQueue_;
+    incrementalPresentSupported_ = enableIncrementalPresent;
     return true;
 }
 
@@ -606,6 +652,7 @@ bool VulkanRenderBackend::recreateSwapchain(const RenderSurface& surface) {
     swapchainImages_.resize(imageCount);
     vkGetSwapchainImagesKHR(device_, swapchain_, &imageCount, swapchainImages_.data());
     swapchainImageLayouts_.assign(swapchainImages_.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+    swapchainImageCacheGenerations_.assign(swapchainImages_.size(), 0);
 
     swapchainImageViews_.resize(swapchainImages_.size());
     for (std::size_t i = 0; i < swapchainImages_.size(); ++i) {
@@ -752,16 +799,27 @@ void VulkanRenderBackend::beginLoadPass() {
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass_;
     renderPassInfo.framebuffer = currentFramebuffer();
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = currentRenderExtent();
+    renderPassInfo.renderArea = currentRenderArea();
 
     vkCmdBeginRenderPass(commandBuffers_[currentImage_], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     renderPassActive_ = true;
     frameRecorded_ = true;
+    core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
+    ++stats.backendRenderPasses;
+    stats.backendRenderPassPixels += static_cast<std::uint64_t>(renderPassInfo.renderArea.extent.width) *
+                                     static_cast<std::uint64_t>(renderPassInfo.renderArea.extent.height);
 }
 
 VkExtent2D VulkanRenderBackend::currentRenderExtent() const {
     return renderingToCache_ ? renderCacheExtent_ : swapchainExtent_;
+}
+
+VkRect2D VulkanRenderBackend::currentRenderArea() const {
+    const VkExtent2D extent = currentRenderExtent();
+    if (renderingToCache_ && cacheRenderArea_.width > 0.0f && cacheRenderArea_.height > 0.0f) {
+        return clampScissor(cacheRenderArea_, static_cast<int>(extent.width), static_cast<int>(extent.height));
+    }
+    return {{0, 0}, extent};
 }
 
 VkFramebuffer VulkanRenderBackend::currentFramebuffer() const {
@@ -820,6 +878,7 @@ void VulkanRenderBackend::destroySwapchain() {
     commandBuffers_.clear();
     swapchainImages_.clear();
     swapchainImageLayouts_.clear();
+    swapchainImageCacheGenerations_.clear();
     swapchainTransferSrcSupported_ = false;
     swapchainTransferDstSupported_ = false;
     backdropReady_ = false;

@@ -118,8 +118,9 @@ public:
         });
         core::render::ScopedRenderBackend scopedRenderBackend(renderBackend);
         app::render(metrics.framebufferWidth, metrics.framebufferHeight, metrics.dpiScale);
-        runner_.recordRenderStats(core::render::lastRenderFrameStats());
         renderBackend.present();
+        core::render::publishRenderFrameStats();
+        runner_.recordRenderStats(core::render::lastRenderFrameStats());
         const auto renderEnd = std::chrono::steady_clock::now();
         runner_.recordRenderDuration(std::chrono::duration<double, std::milli>(renderEnd - renderStart).count());
         runner_.markRendered();

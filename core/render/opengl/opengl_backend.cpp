@@ -96,6 +96,7 @@ bool OpenGLRenderBackend::initialize() {
         return false;
     }
 
+    damagePresentSupported_ = false;
     initialized_ = true;
     return true;
 }
@@ -207,6 +208,8 @@ void OpenGLRenderBackend::makeCurrent() {
 
 void OpenGLRenderBackend::beginFrame(const RenderSurface& surface) {
     makeCurrent();
+    framebufferWidth_ = std::max(0, surface.framebufferWidth);
+    framebufferHeight_ = std::max(0, surface.framebufferHeight);
     glViewport(0, 0, surface.framebufferWidth, surface.framebufferHeight);
 }
 
@@ -219,6 +222,11 @@ void OpenGLRenderBackend::present() {
 #else
     glfwSwapBuffers(static_cast<GLFWwindow*>(window_));
 #endif
+    core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
+    ++stats.backendPresents;
+    stats.backendPresentPixels += static_cast<std::uint64_t>(std::max(0, framebufferWidth_)) *
+                                  static_cast<std::uint64_t>(std::max(0, framebufferHeight_));
+    stats.backendIncrementalPresentSupported = damagePresentSupported_ ? 1 : 0;
 }
 
 bool OpenGLRenderBackend::ensureRenderCache(int width, int height) {
@@ -276,7 +284,19 @@ void OpenGLRenderBackend::releaseRenderCache() {
     resetStateCache();
 }
 
-void OpenGLRenderBackend::beginRenderCacheFrame(int width, int height) {
+void OpenGLRenderBackend::beginRenderCacheFrame(int width, int height, const std::vector<core::Rect>& repaintRects) {
+    cacheRenderArea_ = fullRenderRect(width, height);
+    std::vector<core::Rect> renderRects = mergeRenderRects(clampRenderRects(repaintRects, width, height));
+    if (!renderRects.empty()) {
+        core::Rect area = renderRects.front();
+        for (std::size_t i = 1; i < renderRects.size(); ++i) {
+            area = unionRenderRect(area, renderRects[i]);
+        }
+        cacheRenderArea_ = area;
+    }
+    core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
+    ++stats.backendRenderPasses;
+    stats.backendRenderPassPixels += renderRectAreaPixels(cacheRenderArea_);
     glBindFramebuffer(GL_FRAMEBUFFER, cacheFramebuffer_);
     glViewport(0, 0, width, height);
 }
@@ -285,7 +305,18 @@ void OpenGLRenderBackend::endRenderCacheFrame() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void OpenGLRenderBackend::blitRenderCache(int width, int height) {
+void OpenGLRenderBackend::blitRenderCache(int width,
+                                          int height,
+                                          RenderCacheBlitMode mode,
+                                          const std::vector<core::Rect>& dirtyRects) {
+    (void)mode;
+    (void)dirtyRects;
+    const core::Rect fullRect = fullRenderRect(width, height);
+    core::render::RenderFrameStats& stats = core::render::currentRenderFrameStats();
+    ++stats.cacheBlits;
+    ++stats.backendCopyRegions;
+    stats.blitPixels += renderRectAreaPixels(fullRect);
+
     setScissor(false, {}, height);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, cacheFramebuffer_);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);

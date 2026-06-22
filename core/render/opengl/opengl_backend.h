@@ -22,9 +22,14 @@ public:
     bool ensureRenderCache(int width, int height) override;
     bool renderCacheWasRecreated() const override;
     void releaseRenderCache() override;
-    void beginRenderCacheFrame(int width, int height) override;
+    void beginRenderCacheFrame(int width,
+                               int height,
+                               const std::vector<core::Rect>& repaintRects = {}) override;
     void endRenderCacheFrame() override;
-    void blitRenderCache(int width, int height) override;
+    void blitRenderCache(int width,
+                         int height,
+                         RenderCacheBlitMode mode = RenderCacheBlitMode::Full,
+                         const std::vector<core::Rect>& dirtyRects = {}) override;
     void clear(const core::Color& color) override;
     void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
     void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) override;
@@ -61,11 +66,15 @@ private:
     RenderBackend* shareContext_ = nullptr;
     void* context_ = nullptr;
     bool initialized_ = false;
+    bool damagePresentSupported_ = false;
     unsigned int cacheFramebuffer_ = 0;
     unsigned int cacheTexture_ = 0;
     int cacheWidth_ = 0;
     int cacheHeight_ = 0;
     bool cacheRecreated_ = false;
+    int framebufferWidth_ = 0;
+    int framebufferHeight_ = 0;
+    core::Rect cacheRenderArea_{};
     unsigned int imageVao_ = 0;
     unsigned int imageVbo_ = 0;
     unsigned int imageShaderProgram_ = 0;

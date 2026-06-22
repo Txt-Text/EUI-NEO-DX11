@@ -36,6 +36,16 @@ struct AppRunner {
     double accumulatedClearCalls = 0.0;
     double accumulatedRenderDirectPasses = 0.0;
     double accumulatedCacheBlits = 0.0;
+    double accumulatedBackendRenderPasses = 0.0;
+    double accumulatedBackendRenderPassAreaPercent = 0.0;
+    double accumulatedBackendCopyRegions = 0.0;
+    double accumulatedBackendBarriers = 0.0;
+    double accumulatedBackendSubmits = 0.0;
+    double accumulatedBackendPresents = 0.0;
+    double accumulatedBackendPresentAreaPercent = 0.0;
+    double accumulatedBackendIncrementalPresents = 0.0;
+    double accumulatedBackendIncrementalPresentSupported = 0.0;
+    double accumulatedBackendResolveDraws = 0.0;
     int measuredRenderFrames = 0;
     int measuredRenderStatsFrames = 0;
     int fullPaintFrames = 0;
@@ -144,6 +154,16 @@ struct AppRunner {
         accumulatedClearCalls += static_cast<double>(stats.clearCalls);
         accumulatedRenderDirectPasses += static_cast<double>(stats.renderDirectPasses);
         accumulatedCacheBlits += static_cast<double>(stats.cacheBlits);
+        accumulatedBackendRenderPasses += static_cast<double>(stats.backendRenderPasses);
+        accumulatedBackendRenderPassAreaPercent += static_cast<double>(stats.backendRenderPassPixels) * 100.0 / framePixels;
+        accumulatedBackendCopyRegions += static_cast<double>(stats.backendCopyRegions);
+        accumulatedBackendBarriers += static_cast<double>(stats.backendBarriers);
+        accumulatedBackendSubmits += static_cast<double>(stats.backendSubmits);
+        accumulatedBackendPresents += static_cast<double>(stats.backendPresents);
+        accumulatedBackendPresentAreaPercent += static_cast<double>(stats.backendPresentPixels) * 100.0 / framePixels;
+        accumulatedBackendIncrementalPresents += static_cast<double>(stats.backendIncrementalPresents);
+        accumulatedBackendIncrementalPresentSupported += static_cast<double>(stats.backendIncrementalPresentSupported);
+        accumulatedBackendResolveDraws += static_cast<double>(stats.backendResolveDraws);
         ++measuredRenderStatsFrames;
         if (stats.fullPaint) {
             ++fullPaintFrames;
@@ -190,15 +210,25 @@ struct AppRunner {
         const double averageClearCalls = accumulatedClearCalls / statsFrames;
         const double averageRenderDirectPasses = accumulatedRenderDirectPasses / statsFrames;
         const double averageCacheBlits = accumulatedCacheBlits / statsFrames;
+        const double averageBackendRenderPasses = accumulatedBackendRenderPasses / statsFrames;
+        const double averageBackendRenderPassAreaPercent = accumulatedBackendRenderPassAreaPercent / statsFrames;
+        const double averageBackendCopyRegions = accumulatedBackendCopyRegions / statsFrames;
+        const double averageBackendBarriers = accumulatedBackendBarriers / statsFrames;
+        const double averageBackendSubmits = accumulatedBackendSubmits / statsFrames;
+        const double averageBackendPresents = accumulatedBackendPresents / statsFrames;
+        const double averageBackendPresentAreaPercent = accumulatedBackendPresentAreaPercent / statsFrames;
+        const double averageBackendIncrementalPresents = accumulatedBackendIncrementalPresents / statsFrames;
+        const double averageBackendIncrementalPresentSupported = accumulatedBackendIncrementalPresentSupported / statsFrames;
+        const double averageBackendResolveDraws = accumulatedBackendResolveDraws / statsFrames;
         const double fullPaintPercent = static_cast<double>(fullPaintFrames) * 100.0 / statsFrames;
         const double cachePercent = static_cast<double>(renderCacheFrames) * 100.0 / statsFrames;
         const double cacheRecreatedPercent = static_cast<double>(renderCacheRecreatedFrames) * 100.0 / statsFrames;
 
-        char renderStatsText[256];
+        char renderStatsText[384];
         if (measuredRenderStatsFrames > 0) {
             std::snprintf(renderStatsText,
                           sizeof(renderStatsText),
-                          " | Dirty %.1f/%.0f%% | Draw R%.0f P%.0f TP%.0f T%.0f I%.0f | Pass %.1f C%.1f B%.1f/%.0f%% | Full %.0f%% Cache %.0f%% Re %.0f%%",
+                          " | Dirty %.1f/%.0f%% | Draw R%.0f P%.0f TP%.0f T%.0f I%.0f | Pass %.1f C%.1f B%.1f/%.0f%% | Pipe RP%.1f/%.0f%% Cp%.1f Ba%.1f Sub%.1f Pr%.1f/%.0f%% Inc%.1f/%.1f Rs%.1f | Full %.0f%% Cache %.0f%% Re %.0f%%",
                           averageDirtyRects,
                           averageDirtyAreaPercent,
                           averageRectDraws,
@@ -210,6 +240,16 @@ struct AppRunner {
                           averageClearCalls,
                           averageCacheBlits,
                           averageBlitAreaPercent,
+                          averageBackendRenderPasses,
+                          averageBackendRenderPassAreaPercent,
+                          averageBackendCopyRegions,
+                          averageBackendBarriers,
+                          averageBackendSubmits,
+                          averageBackendPresents,
+                          averageBackendPresentAreaPercent,
+                          averageBackendIncrementalPresents,
+                          averageBackendIncrementalPresentSupported,
+                          averageBackendResolveDraws,
                           fullPaintPercent,
                           cachePercent,
                           cacheRecreatedPercent);
@@ -217,7 +257,7 @@ struct AppRunner {
             renderStatsText[0] = '\0';
         }
 
-        char title[512];
+        char title[768];
         if (!usage.hasGpuPercent && std::isnan(averageRenderMs)) {
             std::snprintf(title,
                           sizeof(title),
@@ -269,6 +309,16 @@ struct AppRunner {
         accumulatedClearCalls = 0.0;
         accumulatedRenderDirectPasses = 0.0;
         accumulatedCacheBlits = 0.0;
+        accumulatedBackendRenderPasses = 0.0;
+        accumulatedBackendRenderPassAreaPercent = 0.0;
+        accumulatedBackendCopyRegions = 0.0;
+        accumulatedBackendBarriers = 0.0;
+        accumulatedBackendSubmits = 0.0;
+        accumulatedBackendPresents = 0.0;
+        accumulatedBackendPresentAreaPercent = 0.0;
+        accumulatedBackendIncrementalPresents = 0.0;
+        accumulatedBackendIncrementalPresentSupported = 0.0;
+        accumulatedBackendResolveDraws = 0.0;
         measuredRenderFrames = 0;
         measuredRenderStatsFrames = 0;
         fullPaintFrames = 0;

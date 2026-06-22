@@ -153,10 +153,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     }
 
     if (!fullPaintRequested_ && dirtyRects_.empty()) {
-        stats.blitPixels = static_cast<std::uint64_t>(std::max(0, windowWidth)) *
-                           static_cast<std::uint64_t>(std::max(0, windowHeight));
-        ++stats.cacheBlits;
-        renderBackend->blitRenderCache(windowWidth, windowHeight);
+        renderBackend->blitRenderCache(windowWidth, windowHeight, core::render::RenderCacheBlitMode::Existing);
         core::render::publishRenderFrameStats();
         return;
     }
@@ -177,7 +174,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         stats.dirtyPixels += static_cast<std::uint64_t>(width * height);
     }
 
-    renderBackend->beginRenderCacheFrame(windowWidth, windowHeight);
+    renderBackend->beginRenderCacheFrame(windowWidth, windowHeight, dirtyRects);
 
     if (fullPaintRequested_) {
         renderBackend->setScissor(false, {}, windowHeight);
@@ -197,10 +194,11 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     }
 
     renderBackend->endRenderCacheFrame();
-    stats.blitPixels = static_cast<std::uint64_t>(std::max(0, windowWidth)) *
-                       static_cast<std::uint64_t>(std::max(0, windowHeight));
-    ++stats.cacheBlits;
-    renderBackend->blitRenderCache(windowWidth, windowHeight);
+    renderBackend->blitRenderCache(windowWidth,
+                                   windowHeight,
+                                   fullPaintRequested_ ? core::render::RenderCacheBlitMode::Full
+                                                       : core::render::RenderCacheBlitMode::Dirty,
+                                   dirtyRects);
     dirtyRects_.clear();
     fullPaintRequested_ = false;
     core::render::publishRenderFrameStats();

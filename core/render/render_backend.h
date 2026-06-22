@@ -6,7 +6,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <algorithm>
+#include <cmath>
 #include <memory>
+#include <vector>
 
 namespace core {
 struct Color;
@@ -50,12 +53,112 @@ struct RenderFrameStats {
     int clearCalls = 0;
     int renderDirectPasses = 0;
     int cacheBlits = 0;
+    int backendRenderPasses = 0;
+    std::uint64_t backendRenderPassPixels = 0;
+    int backendCopyRegions = 0;
+    int backendBarriers = 0;
+    int backendSubmits = 0;
+    int backendPresents = 0;
+    std::uint64_t backendPresentPixels = 0;
+    int backendIncrementalPresents = 0;
+    int backendIncrementalPresentSupported = 0;
+    int backendResolveDraws = 0;
     int rectDraws = 0;
     int polygonDraws = 0;
     int textPrepares = 0;
     int textDraws = 0;
     int imageDraws = 0;
 };
+
+enum class RenderCacheBlitMode {
+    Full,
+    Dirty,
+    Existing
+};
+
+inline core::Rect clampRenderRect(const core::Rect& rect, int width, int height) {
+    const float maxWidth = static_cast<float>(std::max(0, width));
+    const float maxHeight = static_cast<float>(std::max(0, height));
+    const float left = std::clamp(std::floor(rect.x), 0.0f, maxWidth);
+    const float top = std::clamp(std::floor(rect.y), 0.0f, maxHeight);
+    const float right = std::clamp(std::ceil(rect.x + rect.width), left, maxWidth);
+    const float bottom = std::clamp(std::ceil(rect.y + rect.height), top, maxHeight);
+    return {left, top, right - left, bottom - top};
+}
+
+inline std::vector<core::Rect> clampRenderRects(const std::vector<core::Rect>& rects, int width, int height) {
+    std::vector<core::Rect> result;
+    result.reserve(rects.size());
+    for (const core::Rect& rect : rects) {
+        const core::Rect clamped = clampRenderRect(rect, width, height);
+        if (clamped.width > 0.0f && clamped.height > 0.0f) {
+            result.push_back(clamped);
+        }
+    }
+    return result;
+}
+
+inline std::uint64_t renderRectAreaPixels(const core::Rect& rect) {
+    return static_cast<std::uint64_t>(std::max(0.0f, rect.width)) *
+           static_cast<std::uint64_t>(std::max(0.0f, rect.height));
+}
+
+inline std::uint64_t renderRectAreaPixels(const std::vector<core::Rect>& rects) {
+    std::uint64_t pixels = 0;
+    for (const core::Rect& rect : rects) {
+        pixels += renderRectAreaPixels(rect);
+    }
+    return pixels;
+}
+
+inline bool renderRectsIntersect(const core::Rect& a, const core::Rect& b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+inline core::Rect unionRenderRect(const core::Rect& a, const core::Rect& b) {
+    const float left = std::min(a.x, b.x);
+    const float top = std::min(a.y, b.y);
+    const float right = std::max(a.x + a.width, b.x + b.width);
+    const float bottom = std::max(a.y + a.height, b.y + b.height);
+    return {left, top, right - left, bottom - top};
+}
+
+inline bool shouldMergeRenderRects(const core::Rect& a, const core::Rect& b) {
+    if (renderRectsIntersect(a, b)) {
+        return true;
+    }
+    const std::uint64_t separateArea = renderRectAreaPixels(a) + renderRectAreaPixels(b);
+    if (separateArea == 0) {
+        return true;
+    }
+    const std::uint64_t mergedArea = renderRectAreaPixels(unionRenderRect(a, b));
+    return static_cast<double>(mergedArea) <= static_cast<double>(separateArea) * 1.25;
+}
+
+inline std::vector<core::Rect> mergeRenderRects(std::vector<core::Rect> rects) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (std::size_t i = 0; i < rects.size() && !changed; ++i) {
+            for (std::size_t j = i + 1; j < rects.size(); ++j) {
+                if (shouldMergeRenderRects(rects[i], rects[j])) {
+                    rects[i] = unionRenderRect(rects[i], rects[j]);
+                    rects.erase(rects.begin() + static_cast<std::ptrdiff_t>(j));
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    return rects;
+}
+
+inline core::Rect fullRenderRect(int width, int height) {
+    return {0.0f, 0.0f, static_cast<float>(std::max(0, width)), static_cast<float>(std::max(0, height))};
+}
 
 class RenderBackend {
 public:
@@ -71,9 +174,14 @@ public:
     virtual bool ensureRenderCache(int width, int height) = 0;
     virtual bool renderCacheWasRecreated() const = 0;
     virtual void releaseRenderCache() = 0;
-    virtual void beginRenderCacheFrame(int width, int height) = 0;
+    virtual void beginRenderCacheFrame(int width,
+                                       int height,
+                                       const std::vector<core::Rect>& repaintRects = {}) = 0;
     virtual void endRenderCacheFrame() = 0;
-    virtual void blitRenderCache(int width, int height) = 0;
+    virtual void blitRenderCache(int width,
+                                 int height,
+                                 RenderCacheBlitMode mode = RenderCacheBlitMode::Full,
+                                 const std::vector<core::Rect>& dirtyRects = {}) = 0;
     virtual void clear(const core::Color& color) = 0;
     virtual void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) = 0;
     virtual void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) = 0;

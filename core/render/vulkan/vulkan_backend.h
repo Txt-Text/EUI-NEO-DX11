@@ -27,9 +27,14 @@ public:
     bool ensureRenderCache(int width, int height) override;
     bool renderCacheWasRecreated() const override;
     void releaseRenderCache() override;
-    void beginRenderCacheFrame(int width, int height) override;
+    void beginRenderCacheFrame(int width,
+                               int height,
+                               const std::vector<core::Rect>& repaintRects = {}) override;
     void endRenderCacheFrame() override;
-    void blitRenderCache(int width, int height) override;
+    void blitRenderCache(int width,
+                         int height,
+                         RenderCacheBlitMode mode = RenderCacheBlitMode::Full,
+                         const std::vector<core::Rect>& dirtyRects = {}) override;
     void clear(const core::Color& color) override;
     void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
     void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) override;
@@ -80,6 +85,12 @@ private:
         std::vector<VkDeviceMemory> pendingMemories;
     };
 
+    struct RenderCacheHistoryEntry {
+        std::uint64_t generation = 0;
+        bool full = false;
+        std::vector<core::Rect> rects;
+    };
+
     bool createInstance();
     bool createSurface();
     bool pickDevice();
@@ -96,7 +107,15 @@ private:
     void destroyRenderCacheResolvePipeline();
     void destroyRenderCacheResolveResources();
     bool drawRenderCacheResolve(int width, int height);
+    std::vector<core::Rect> resolveRenderCacheBlitRects(int width,
+                                                        int height,
+                                                        RenderCacheBlitMode mode,
+                                                        const std::vector<core::Rect>& dirtyRects);
+    void recordRenderCacheBlitHistory(std::uint64_t generation, bool fullSync, const std::vector<core::Rect>& rects);
+    void invalidateRenderCacheSync();
+    void setPresentDirtyRects(const std::vector<core::Rect>& rects);
     VkExtent2D currentRenderExtent() const;
+    VkRect2D currentRenderArea() const;
     VkFramebuffer currentFramebuffer() const;
     VkCommandBuffer currentCommandBuffer() const;
     bool hasCurrentCommandBuffer() const;
@@ -108,7 +127,7 @@ private:
                                VkImage image,
                                VkImageLayout oldLayout,
                                VkImageLayout newLayout);
-    VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight);
+    VkRect2D clampScissor(const core::Rect& rect, int windowWidth, int windowHeight) const;
     bool ensureRoundedRectPipeline();
     bool ensureBackdropResources(std::uint32_t width, std::uint32_t height);
     bool ensureBackdropDescriptor();
@@ -170,8 +189,10 @@ private:
     bool scissorEnabled_ = false;
     bool swapchainTransferSrcSupported_ = false;
     bool swapchainTransferDstSupported_ = false;
+    bool incrementalPresentSupported_ = false;
     bool backdropReady_ = false;
     core::Rect scissorRect_{};
+    core::Rect cacheRenderArea_{};
     core::Color clearColor_{0.0f, 0.0f, 0.0f, 1.0f};
 
     VkDescriptorSetLayout roundedRectDescriptorSetLayout_ = VK_NULL_HANDLE;
@@ -195,6 +216,10 @@ private:
     VkExtent2D renderCacheExtent_{};
     bool renderCacheRecreated_ = false;
     bool renderingToCache_ = false;
+    std::uint64_t renderCacheGeneration_ = 0;
+    std::vector<std::uint64_t> swapchainImageCacheGenerations_;
+    std::vector<RenderCacheHistoryEntry> renderCacheHistory_;
+    std::vector<core::Rect> presentDirtyRects_;
     VkDescriptorSetLayout renderCacheResolveDescriptorSetLayout_ = VK_NULL_HANDLE;
     VkDescriptorPool renderCacheResolveDescriptorPool_ = VK_NULL_HANDLE;
     VkDescriptorSet renderCacheResolveDescriptorSet_ = VK_NULL_HANDLE;
