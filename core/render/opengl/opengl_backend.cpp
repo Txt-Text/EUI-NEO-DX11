@@ -275,6 +275,7 @@ bool OpenGLRenderBackend::renderCacheWasRecreated() const {
 }
 
 void OpenGLRenderBackend::releaseRenderCache() {
+    makeCurrent();
     if (cacheTexture_ != 0) {
         glDeleteTextures(1, &cacheTexture_);
         cacheTexture_ = 0;

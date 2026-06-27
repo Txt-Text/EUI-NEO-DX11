@@ -176,21 +176,25 @@ void restoreWindowFromTray(GLFWwindow* window, WindowState& windowState) {
     windowState.hiddenToTray = false;
     windowState.hideToTrayRequested = false;
     windowState.paintRequested = true;
+    app::detail::requestFullPaint();
     windowState.nextFrameTime = glfwGetTime();
 }
 
 void installWindowCallbacks(GLFWwindow* window, WindowState& windowState) {
     glfwSetWindowUserPointer(window, &windowState);
     glfwSetFramebufferSizeCallback(window, [](GLFWwindow* currentWindow, int w, int h) {
-        (void)w;
-        (void)h;
         static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
+        if (w > 0 && h > 0) {
+            app::detail::requestFullPaint();
+        }
     });
     glfwSetWindowRefreshCallback(window, [](GLFWwindow* currentWindow) {
         static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
+        app::detail::requestFullPaint();
     });
     glfwSetWindowContentScaleCallback(window, [](GLFWwindow* currentWindow, float, float) {
         static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow))->paintRequested = true;
+        app::detail::requestFullPaint();
     });
     glfwSetWindowFocusCallback(window, [](GLFWwindow* currentWindow, int focused) {
         WindowState* state = static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow));
@@ -281,6 +285,8 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool update
     int framebufferHeight = 0;
     glfwGetFramebufferSize(managed.window, &framebufferWidth, &framebufferHeight);
     if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+        managed.renderBackend->releaseRenderCache();
+        managed.content.requestFullPaint();
         managed.state.paintRequested = true;
         return true;
     }
@@ -402,6 +408,9 @@ int main() {
         WindowState* state = static_cast<WindowState*>(glfwGetWindowUserPointer(currentWindow));
         if (state && state->trayAvailable && iconified && !state->forceClose) {
             state->hideToTrayRequested = true;
+        } else if (state && !iconified) {
+            state->paintRequested = true;
+            app::detail::requestFullPaint();
         }
     });
 
@@ -452,6 +461,8 @@ int main() {
         int framebufferHeight = 0;
         glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
         if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+            renderBackend->releaseRenderCache();
+            app::detail::requestFullPaint();
             glfwWaitEvents();
             mainWindowRuntime.markUnavailableFrame(glfwGetTime());
             continue;

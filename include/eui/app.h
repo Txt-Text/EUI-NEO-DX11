@@ -41,4 +41,8 @@ void releaseGraphicsResources();
 void shutdown();
 std::vector<DslWindowRequest> consumeWindowRequests();
 
+namespace detail {
+void requestFullPaint();
+}
+
 } // namespace app

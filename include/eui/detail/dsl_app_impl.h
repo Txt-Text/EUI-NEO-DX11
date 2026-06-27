@@ -204,6 +204,15 @@ void requestUpdate() {
     core::platform::requestUiUpdate();
 }
 
+namespace detail {
+
+void requestFullPaint() {
+    dslRuntime().requestFullPaint();
+    core::platform::requestUiUpdate();
+}
+
+} // namespace detail
+
 bool initialize(core::window::Handle window) {
     const DslAppConfig& config = dslAppConfig();
     core::TextPrimitive::setDefaultFontFiles(
@@ -254,7 +263,6 @@ bool update(core::window::Handle window, float deltaSeconds, int windowWidth, in
     bool changed = false;
     if (updateRequested) {
         composeFrame();
-        detail::dslRuntime().requestFullPaint();
         changed = true;
     }
 

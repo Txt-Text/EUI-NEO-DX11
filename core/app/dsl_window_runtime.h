@@ -38,6 +38,11 @@ public:
         paintRequested_ = true;
     }
 
+    void requestFullPaint() {
+        runtime_.requestFullPaint();
+        paintRequested_ = true;
+    }
+
     bool update(core::window::Handle window,
                 float deltaSeconds,
                 float logicalWidth,
@@ -57,9 +62,9 @@ public:
             logicalHeight_ = logicalHeight;
         };
 
-        if (!composed_ || logicalWidth_ != logicalWidth || logicalHeight_ != logicalHeight || updateRequested) {
+        const bool needsInitialOrResizeCompose = !composed_ || logicalWidth_ != logicalWidth || logicalHeight_ != logicalHeight;
+        if (needsInitialOrResizeCompose || updateRequested) {
             composeFrame();
-            runtime_.requestFullPaint();
             paintRequested_ = true;
             changed = true;
         }

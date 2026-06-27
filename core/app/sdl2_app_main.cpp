@@ -172,6 +172,7 @@ void restoreFromTray(SDL_Window* window, WindowState& state) {
     SDL_RaiseWindow(window);
     state.hiddenToTray = false;
     state.paintRequested = true;
+    app::detail::requestFullPaint();
 }
 
 void requestClose(SDL_Window* window, WindowState& state) {
@@ -245,6 +246,7 @@ void processMainEvent(SDL_Window* window, WindowState& state, const SDL_Event& e
         case SDL_WINDOWEVENT_SHOWN:
         case SDL_WINDOWEVENT_RESTORED:
             state.paintRequested = true;
+            app::detail::requestFullPaint();
             break;
         default:
             break;
@@ -383,7 +385,7 @@ void processManagedEvent(ManagedWindow& managed, const SDL_Event& event) {
                    event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
                    event.window.event == SDL_WINDOWEVENT_SHOWN ||
                    event.window.event == SDL_WINDOWEVENT_RESTORED) {
-            managed.content.requestPaint();
+            managed.content.requestFullPaint();
         }
     }
 }
@@ -398,6 +400,8 @@ bool updateManagedWindow(ManagedWindow& managed, float deltaSeconds, bool update
     int drawableHeight = 0;
     getDrawableSize(managed.window, drawableWidth, drawableHeight);
     if (drawableWidth <= 0 || drawableHeight <= 0) {
+        managed.renderBackend->releaseRenderCache();
+        managed.content.requestFullPaint();
         return true;
     }
     const float dpi = dpiScale(managed.window);
@@ -550,6 +554,8 @@ int main() {
         int drawableHeight = 0;
         getDrawableSize(window, drawableWidth, drawableHeight);
         if (drawableWidth <= 0 || drawableHeight <= 0) {
+            renderBackend->releaseRenderCache();
+            app::detail::requestFullPaint();
             mainWindowRuntime.markUnavailableFrame(core::window::timeSeconds());
             continue;
         }
