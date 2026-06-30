@@ -66,7 +66,13 @@ endfunction()
 function(eui_apply_app_link_options target_name)
     if(MSVC)
         set_target_properties(${target_name} PROPERTIES VS_GLOBAL_VcpkgXUseBuiltInApplocalDeps true)
-        target_link_options(${target_name} PRIVATE /OPT:REF /OPT:ICF /ENTRY:mainCRTStartup /SUBSYSTEM:WINDOWS)
+        target_link_options(${target_name} PRIVATE
+            $<$<NOT:$<CONFIG:Debug>>:/OPT:REF>
+            $<$<NOT:$<CONFIG:Debug>>:/OPT:ICF>
+            $<$<NOT:$<CONFIG:Debug>>:/INCREMENTAL:NO>
+            /ENTRY:mainCRTStartup
+            /SUBSYSTEM:WINDOWS
+        )
     elseif(APPLE)
         target_link_options(${target_name} PRIVATE -Wl,-dead_strip)
     else()

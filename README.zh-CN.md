@@ -171,11 +171,13 @@ tests/        probe 源码、fixture 应用和本地 benchmark 记录
 
 - [DSL 设计与当前实现](docs/DSL.md)
 - [组件](docs/组件.md)
+- [状态模型](docs/状态.md)
 - [布局](docs/布局.md)
 - [事件](docs/事件.md)
 - [动画](docs/动画.md)
 - [异步](docs/异步.md)
 - [渲染后端架构与流程](docs/渲染后端架构.md)
+- [Retained Layer Cache](docs/retained_layer_cache.md)
 - [图片](docs/图片.md)
 - [网络](docs/网络.md)
 - [平台能力](docs/平台能力.md)

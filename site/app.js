@@ -192,19 +192,6 @@ const docs = [
     tags: "retained layer cache static subtree opengl vulkan framebuffer texture"
   },
   {
-    category: "rendering",
-    href: "../docs/Slint渲染与优化对比.md",
-    zh: {
-      title: "Slint 渲染与优化对比",
-      desc: "Renderer 选择、partial rendering 和 EUI-NEO 脏区优化。"
-    },
-    en: {
-      title: "Slint Rendering Comparison",
-      desc: "Renderer choices, partial rendering, and EUI-NEO dirty optimization."
-    },
-    tags: "slint renderer optimization dirty partial rendering"
-  },
-  {
     category: "platform",
     href: "../docs/事件.md",
     zh: {

@@ -171,11 +171,13 @@ tests/        Probe sources, fixture apps, and local benchmark notes
 
 - [DSL Design And Current Implementation](docs/DSL.md)
 - [Components](docs/组件.md)
+- [State Model](docs/状态.md)
 - [Layout](docs/布局.md)
 - [Events](docs/事件.md)
 - [Animation](docs/动画.md)
 - [Async](docs/异步.md)
 - [Render Backend Architecture And Pipeline](docs/渲染后端架构.md)
+- [Retained Layer Cache](docs/retained_layer_cache.md)
 - [Images](docs/图片.md)
 - [Network](docs/网络.md)
 - [Platform Capabilities](docs/平台能力.md)
