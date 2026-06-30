@@ -4,6 +4,7 @@
 #include "core/runtime/runtime_instances.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 
@@ -15,6 +16,10 @@ inline bool ownsScrollState(const Element& element) {
 
 inline bool ownsSliderState(const Element& element) {
     return !element.sliderStateId.empty() && element.id == element.sliderStateId;
+}
+
+inline constexpr float scrollTransformMinActiveOffset() {
+    return 0.01f;
 }
 
 inline void syncOwnedScrollState(const Element& element, runtime::ScrollStateInstance& instance) {
@@ -83,8 +88,12 @@ inline Transform scrollTransformForElement(const Element& element,
                                            Transform transform = {}) {
     if (!element.scrollContentSourceId.empty()) {
         const auto state = scrollStates.find(element.scrollContentSourceId);
-        if (state != scrollStates.end()) {
-            transform.translate.y -= state->second.offset;
+        if (state != scrollStates.end() && state->second.maxOffset > 0.0f) {
+            float offset = state->second.offset;
+            if (std::fabs(offset) <= scrollTransformMinActiveOffset()) {
+                offset = scrollTransformMinActiveOffset();
+            }
+            transform.translate.y -= offset;
         }
     }
     if (!element.scrollThumbSourceId.empty()) {
