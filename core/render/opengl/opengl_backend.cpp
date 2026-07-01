@@ -42,6 +42,16 @@ bool loadOpenGLFunctions() {
 }
 #endif
 
+bool platformRequiresConservativeBackbufferSync() {
+#if defined(__linux__)
+    // Linux OpenGL drivers/window systems may not preserve post-swap backbuffer contents.
+    // Use full cache blits there instead of assuming previous backbuffer pixels are valid.
+    return true;
+#else
+    return false;
+#endif
+}
+
 } // namespace
 
 OpenGLRenderBackend::OpenGLRenderBackend(core::window::Handle window, RenderBackend* shareContext)
@@ -378,6 +388,10 @@ std::vector<core::Rect> OpenGLRenderBackend::resolveRenderCacheBlitRects(int wid
     }
 
     if (mode == RenderCacheBlitMode::Full || currentBackbuffer_ >= backbufferCacheGenerations_.size()) {
+        return useFull();
+    }
+
+    if (platformRequiresConservativeBackbufferSync()) {
         return useFull();
     }
 
