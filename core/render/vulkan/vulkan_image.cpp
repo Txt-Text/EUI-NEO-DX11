@@ -278,7 +278,16 @@ void VulkanRenderBackend::drawLayerTexture(TextureHandle handle,
     }
     const std::size_t floatOffset = imageVertices_.used;
     auto* mappedImageVertices = static_cast<float*>(imageVertices_.mapped);
-    std::memcpy(mappedImageVertices + floatOffset, vertices, vertexFloatCount * sizeof(float));
+    std::array<float, 42> layerVertices{};
+    if (vertexFloatCount > layerVertices.size()) {
+        return;
+    }
+    std::memcpy(layerVertices.data(), vertices, vertexFloatCount * sizeof(float));
+    // Retained layers are color attachments; their V origin differs from uploaded image textures.
+    for (std::size_t offset = 6; offset < vertexFloatCount; offset += 7) {
+        layerVertices[offset] = 1.0f - layerVertices[offset];
+    }
+    std::memcpy(mappedImageVertices + floatOffset, layerVertices.data(), vertexFloatCount * sizeof(float));
     imageVertices_.used += vertexFloatCount;
 
     VkCommandBuffer commandBuffer = currentCommandBuffer();
