@@ -47,6 +47,12 @@ struct LineChartStyle {
     float radius = 18.0f;
 };
 
+enum class LineStyle {
+    Linear,
+    Curve,
+    Step
+};
+
 class LineChartBuilder {
     struct TooltipItem {
         std::string sourceId;
@@ -64,6 +70,7 @@ public:
     LineChartBuilder& values(std::vector<float> value) { values_ = std::move(value); return *this; }
     LineChartBuilder& labels(std::vector<std::string> value) { labels_ = std::move(value); return *this; }
     LineChartBuilder& style(const LineChartStyle& value) { style_ = value; return *this; }
+    LineChartBuilder& style(LineStyle value) { lineStyle_ = value; return *this; }
     LineChartBuilder& theme(const theme::ThemeColorTokens& tokens) { style_ = LineChartStyle(tokens); return *this; }
     LineChartBuilder& transition(const core::Transition& value) { transition_ = value; return *this; }
 
@@ -86,6 +93,11 @@ public:
         const float stepX = count > 1 ? plotWidth / static_cast<float>(count - 1) : 0.0f;
         const float lineHeight = 4.0f;
         const float pointSize = 13.0f;
+        std::vector<core::Vec2> displayPoints;
+        displayPoints.reserve(displayValues.size());
+        for (int index = 0; index < count; ++index) {
+            displayPoints.push_back(pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX));
+        }
 
         ui_.stack(id_)
             .size(width_, height_)
@@ -118,16 +130,19 @@ public:
                         .build();
                 }
 
-                for (int index = 0; index + 1 < count; ++index) {
-                    const core::Vec2 from = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
-                    const core::Vec2 to = pointAt(displayValues, index + 1, plotX, bottomY, plotHeight, stepX);
+                auto drawCapsuleSegment = [&](const std::string& segmentId, const core::Vec2& from, const core::Vec2& to) {
+                    const float dx = to.x - from.x;
+                    const float dy = to.y - from.y;
+                    if (std::sqrt(dx * dx + dy * dy) <= 0.001f) {
+                        return;
+                    }
                     const float radius = lineHeight * 0.5f;
                     const float segmentX = std::min(from.x, to.x) - radius;
                     const float segmentY = std::min(from.y, to.y) - radius;
                     const float segmentWidth = std::fabs(to.x - from.x) + lineHeight;
                     const float segmentHeight = std::fabs(to.y - from.y) + lineHeight;
 
-                    ui_.polygon(id_ + ".segment." + std::to_string(index))
+                    ui_.polygon(segmentId)
                         .x(segmentX)
                         .y(segmentY)
                         .size(segmentWidth, segmentHeight)
@@ -135,12 +150,31 @@ public:
                         .color(style_.line)
                         .transition(transition_)
                         .build();
+                };
+
+                if (lineStyle_ == LineStyle::Curve && count > 2) {
+                    const std::vector<core::Vec2> curve = curvePoints(displayPoints, plotY, bottomY);
+                    for (std::size_t index = 0; index + 1 < curve.size(); ++index) {
+                        drawCapsuleSegment(id_ + ".segment.curve." + std::to_string(index), curve[index], curve[index + 1]);
+                    }
+                } else {
+                    for (int index = 0; index + 1 < count; ++index) {
+                        const core::Vec2 from = displayPoints[static_cast<std::size_t>(index)];
+                        const core::Vec2 to = displayPoints[static_cast<std::size_t>(index + 1)];
+                        if (lineStyle_ == LineStyle::Step) {
+                            const core::Vec2 elbow = {to.x, from.y};
+                            drawCapsuleSegment(id_ + ".segment." + std::to_string(index) + ".h", from, elbow);
+                            drawCapsuleSegment(id_ + ".segment." + std::to_string(index) + ".v", elbow, to);
+                        } else {
+                            drawCapsuleSegment(id_ + ".segment." + std::to_string(index), from, to);
+                        }
+                    }
                 }
 
                 std::vector<TooltipItem> tooltips;
                 tooltips.reserve(displayValues.size());
                 for (int index = 0; index < count; ++index) {
-                    const core::Vec2 point = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
+                    const core::Vec2 point = displayPoints[static_cast<std::size_t>(index)];
                     const std::string pointId = id_ + ".point." + std::to_string(index);
                     ui_.rect(pointId)
                         .x(point.x - pointSize * 0.5f)
@@ -159,7 +193,7 @@ public:
 
                 const float labelWidth = std::max(28.0f, std::min(42.0f, count > 1 ? stepX : plotWidth));
                 for (int index = 0; index < count; ++index) {
-                    const core::Vec2 point = pointAt(displayValues, index, plotX, bottomY, plotHeight, stepX);
+                    const core::Vec2 point = displayPoints[static_cast<std::size_t>(index)];
                     const float labelX = std::clamp(point.x - labelWidth * 0.5f, 0.0f, std::max(0.0f, width_ - labelWidth));
                     label(id_ + ".label." + std::to_string(index), dataLabel(index), labelX, height_ - 34.0f, labelWidth);
                 }
@@ -274,6 +308,45 @@ private:
         return points;
     }
 
+    static core::Vec2 catmullRom(const core::Vec2& p0,
+                                 const core::Vec2& p1,
+                                 const core::Vec2& p2,
+                                 const core::Vec2& p3,
+                                 float t) {
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        return {
+            0.5f * ((2.0f * p1.x) + (-p0.x + p2.x) * t +
+                    (2.0f * p0.x - 5.0f * p1.x + 4.0f * p2.x - p3.x) * t2 +
+                    (-p0.x + 3.0f * p1.x - 3.0f * p2.x + p3.x) * t3),
+            0.5f * ((2.0f * p1.y) + (-p0.y + p2.y) * t +
+                    (2.0f * p0.y - 5.0f * p1.y + 4.0f * p2.y - p3.y) * t2 +
+                    (-p0.y + 3.0f * p1.y - 3.0f * p2.y + p3.y) * t3)
+        };
+    }
+
+    static std::vector<core::Vec2> curvePoints(const std::vector<core::Vec2>& points, float minY, float maxY) {
+        constexpr int samplesPerSegment = 8;
+        std::vector<core::Vec2> result;
+        if (points.size() < 2) {
+            return result;
+        }
+        result.reserve((points.size() - 1u) * samplesPerSegment + 1u);
+        result.push_back(points.front());
+        for (std::size_t index = 0; index + 1 < points.size(); ++index) {
+            const core::Vec2& p0 = points[index == 0 ? 0 : index - 1u];
+            const core::Vec2& p1 = points[index];
+            const core::Vec2& p2 = points[index + 1u];
+            const core::Vec2& p3 = points[index + 2u < points.size() ? index + 2u : points.size() - 1u];
+            for (int sample = 1; sample <= samplesPerSegment; ++sample) {
+                core::Vec2 point = catmullRom(p0, p1, p2, p3, static_cast<float>(sample) / static_cast<float>(samplesPerSegment));
+                point.y = std::clamp(point.y, minY, maxY);
+                result.push_back(point);
+            }
+        }
+        return result;
+    }
+
     static std::vector<core::Vec2> circlePoints(const core::Vec2& center, float radius, float originX, float originY) {
         std::vector<core::Vec2> points;
         points.reserve(18u);
@@ -337,6 +410,7 @@ private:
     std::vector<float> values_;
     std::vector<std::string> labels_ = {"Jan", "Feb", "Mar", "Apr", "May", "Jun"};
     LineChartStyle style_;
+    LineStyle lineStyle_ = LineStyle::Linear;
     core::Transition transition_ = core::Transition::make(0.16f, core::Ease::OutCubic);
     float width_ = 206.0f;
     float height_ = 236.0f;

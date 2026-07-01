@@ -667,6 +667,7 @@ struct GalleryControlsPage {
                 .title("LineChart")
                 .values({0.22f, 0.30f, 0.20f, 0.55f, 0.42f, 0.86f})
                 .labels({"Jan", "Feb", "Mar", "Apr", "May", "Jun"})
+                .style(components::LineStyle::Curve)
                 .transition(pageTransition())
                 .build();
 

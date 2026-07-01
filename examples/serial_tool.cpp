@@ -24,6 +24,7 @@ struct SerialState {
     int mode = 0;
     int tick = 0;
     int sequence = 0;
+    components::LineStyle chartStyle = components::LineStyle::Linear;
     int txFrames = 0;
     int rxFrames = 0;
     int txBytes = 0;
@@ -316,6 +317,32 @@ std::vector<float> pieValues() {
     };
 }
 
+std::string chartStyleText() {
+    switch (state.chartStyle) {
+    case components::LineStyle::Curve:
+        return "Curve";
+    case components::LineStyle::Step:
+        return "Step";
+    case components::LineStyle::Linear:
+    default:
+        return "Linear";
+    }
+}
+
+void nextChartStyle() {
+    switch (state.chartStyle) {
+    case components::LineStyle::Linear:
+        state.chartStyle = components::LineStyle::Curve;
+        break;
+    case components::LineStyle::Curve:
+        state.chartStyle = components::LineStyle::Step;
+        break;
+    case components::LineStyle::Step:
+        state.chartStyle = components::LineStyle::Linear;
+        break;
+    }
+}
+
 void label(eui::Ui& ui,
            const std::string& id,
            float x,
@@ -480,8 +507,14 @@ void composeCharts(eui::Ui& ui, float x, float y, float width) {
                 .title("Throughput")
                 .values(state.throughput)
                 .labels({"-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1", "Now"})
+                .style(state.chartStyle)
                 .transition(chartTransition())
                 .build();
+
+            button(ui, "charts.line.style", lineW - 116.0f, 16.0f, 96.0f, 30.0f,
+                   chartStyleText(), 0xF1FC, false, [] {
+                       nextChartStyle();
+                   });
         })
         .build();
 
