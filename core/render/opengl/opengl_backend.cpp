@@ -197,7 +197,10 @@ void OpenGLRenderBackend::setBlendEnabled(bool enabled) {
 void OpenGLRenderBackend::setStandardAlphaBlend() {
     setBlendEnabled(true);
     if (!stateCacheValid_ || !alphaBlendSet_) {
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendFuncSeparate(GL_SRC_ALPHA,
+                            GL_ONE_MINUS_SRC_ALPHA,
+                            GL_ONE,
+                            GL_ONE_MINUS_SRC_ALPHA);
         alphaBlendSet_ = true;
         stateCacheValid_ = true;
     }

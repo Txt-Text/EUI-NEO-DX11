@@ -12,6 +12,7 @@
 #include "components/tabs.h"
 #include "components/scroll.h"
 #include "components/scrollview.h"
+#include "components/virtuallist.h"
 
 #include "components/dropdown.h"
 #include "components/datepicker.h"

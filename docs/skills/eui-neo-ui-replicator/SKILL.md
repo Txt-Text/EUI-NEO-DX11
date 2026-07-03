@@ -105,7 +105,7 @@ Use `Stack` for overlays, absolute local coordinates, backgrounds behind content
 
 Use `Flow` for chips, tags, filter buttons, compact action groups, and any horizontal content that should wrap.
 
-Use `components::scrollView` for scrollable measured content. Use low-level `components::scroll` only when manually binding a runtime scroll state is necessary.
+Use `components::scrollView` for scrollable measured content. Use `components::virtualList` for very large fixed-height lists where composing every row would be wasteful. Use low-level `components::scroll` only when manually binding a runtime scroll state is necessary.
 
 Inside `scrollView`, make the scroll content root measure its real content height. Prefer `.height(SizeValue::wrapContent())` on the content root; do not lock it to the viewport height unless the content is intentionally non-scrollable.
 

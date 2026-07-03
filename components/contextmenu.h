@@ -79,15 +79,16 @@ public:
             .size(screenWidth_, screenHeight_)
             .zIndex(zIndex_)
             .content([&] {
-                ui_.rect(id_ + ".dismiss")
-                    .size(screenWidth_, screenHeight_)
-                    .states(theme::color(0.0f, 0.0f, 0.0f, 0.0f),
-                            theme::color(0.0f, 0.0f, 0.0f, 0.0f),
-                            theme::color(0.0f, 0.0f, 0.0f, 0.0f))
-                    .disabled(!open_)
-                    .onClick(requestDismiss)
-                    .onScroll([](const core::ScrollEvent&) {})
-                    .build();
+                if (open_) {
+                    ui_.rect(id_ + ".dismiss")
+                        .size(screenWidth_, screenHeight_)
+                        .states(theme::color(0.0f, 0.0f, 0.0f, 0.0f),
+                                theme::color(0.0f, 0.0f, 0.0f, 0.0f),
+                                theme::color(0.0f, 0.0f, 0.0f, 0.0f))
+                        .onClick(requestDismiss)
+                        .onScroll([](const core::ScrollEvent&) {})
+                        .build();
+                }
 
                 ui_.stack(id_ + ".menu")
                     .x(x)
@@ -100,6 +101,10 @@ public:
                     .transition(transition_)
                     .animate(core::AnimProperty::Opacity | core::AnimProperty::Transform)
                     .content([&] {
+                        if (!open_) {
+                            return;
+                        }
+
                         ui_.rect(id_ + ".bg")
                             .size(width, height)
                             .color(style_.background)

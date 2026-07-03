@@ -2,6 +2,7 @@ struct GalleryLayoutPage {
     bool loaderKeepAlive = true;
     bool loaderOpen = true;
     float localScroll = 0.0f;
+    float virtualScroll = 0.0f;
     int loaderCounter = 0;
 
     void cardTitle(eui::Ui& ui, const std::string& id, const std::string& text, float width) {
@@ -29,6 +30,8 @@ struct GalleryLayoutPage {
     }
 
     void pill(eui::Ui& ui, const std::string& id, const std::string& text, float width, float height, eui::Color color) {
+        const float luminance = color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
+        const eui::Color labelColor = luminance > 0.58f ? textPrimary() : eui::Color{0.96f, 0.98f, 1.0f, 1.0f};
         ui.stack(id)
             .size(width, height)
             .content([&] {
@@ -46,7 +49,7 @@ struct GalleryLayoutPage {
                     .fontSize(13.0f)
                     .lineHeight(18.0f)
                     .fontWeight(720)
-                    .color(eui::Color{0.96f, 0.98f, 1.0f, 1.0f})
+                    .color(labelColor)
                     .horizontalAlign(eui::HorizontalAlign::Center)
                     .verticalAlign(eui::VerticalAlign::Center)
                     .build();
@@ -204,6 +207,79 @@ struct GalleryLayoutPage {
                                  30.0f,
                                  i % 2 == 0 ? surfaceSoft() : surfaceActive());
                         }
+                    })
+                    .build();
+            })
+            .build();
+    }
+
+    void virtualListCard(eui::Ui& ui, float width) {
+        const float inset = 18.0f;
+        const float contentWidth = std::max(0.0f, width - inset * 2.0f);
+        constexpr long long itemCount = 100000;
+        constexpr float rowHeight = 32.0f;
+
+        auto rowColor = [](auto index) {
+            const float r = 0.16f + static_cast<float>((index * 37) % 120) / 255.0f;
+            const float g = 0.30f + static_cast<float>((index * 19) % 100) / 255.0f;
+            const float b = 0.42f + static_cast<float>((index * 53) % 110) / 255.0f;
+            return eui::Color{r, g, b, 1.0f};
+        };
+
+        components::card(ui, "layout.virtual")
+            .width(width)
+            .height(286.0f)
+            .padding(inset)
+            .theme(themeColors())
+            .content([&] {
+                cardTitle(ui, "layout.virtual.title", "virtualList", contentWidth);
+                note(ui, "layout.virtual.note", "fixed row height + overscanned visible slots", contentWidth, 28.0f);
+
+                components::virtualList(ui, "layout.virtual.viewport")
+                    .theme(themeColors())
+                    .position(0.0f, 70.0f)
+                    .size(contentWidth, 164.0f)
+                    .itemCount(itemCount)
+                    .rowHeight(rowHeight)
+                    .offset(virtualScroll)
+                    .step(rowHeight * 2.0f)
+                    .overscanViewports(1.0f)
+                    .scrollbarWidth(7.0f)
+                    .scrollbarGap(10.0f)
+                    .transition(eui::Transition{})
+                    .onChange([this](float value) {
+                        virtualScroll = value;
+                    })
+                    .row([&](eui::Ui& rowUi, const std::string& rowId, auto index, float rowWidth, float height) {
+                        const eui::Color color = rowColor(index);
+                        const eui::Color bg = index % 2 == 0 ? surfaceSoft() : surfaceActive();
+
+                        rowUi.rect(rowId + ".bg")
+                            .x(0.0f)
+                            .y(3.0f)
+                            .size(std::max(0.0f, rowWidth - 2.0f), height - 6.0f)
+                            .color(bg)
+                            .radius(9.0f)
+                            .border(1.0f, withAlpha(color, 0.22f))
+                            .build();
+                        rowUi.rect(rowId + ".mark")
+                            .x(10.0f)
+                            .y(10.0f)
+                            .size(6.0f, height - 20.0f)
+                            .color(color)
+                            .radius(3.0f)
+                            .build();
+                        rowUi.text(rowId + ".text")
+                            .x(26.0f)
+                            .y(0.0f)
+                            .size(std::max(0.0f, rowWidth - 42.0f), height)
+                            .text("virtual row " + std::to_string(index + 1) + " / " + std::to_string(itemCount))
+                            .fontSize(13.0f)
+                            .lineHeight(18.0f)
+                            .fontWeight(700)
+                            .color(textPrimary())
+                            .verticalAlign(eui::VerticalAlign::Center)
+                            .build();
                     })
                     .build();
             })
@@ -507,12 +583,13 @@ struct GalleryLayoutPage {
         constexpr float clipHeight = 196.0f;
         constexpr float fillWrapHeight = 232.0f;
         constexpr float scrollHeight = 266.0f;
+        constexpr float virtualListHeight = 286.0f;
         constexpr float loaderHeight = 230.0f;
         const float leftColumnHeight = rowColumnHeight + flexHeight + fillWrapHeight + responsiveHeight + loaderHeight + gap * 4.0f;
-        const float rightColumnHeight = stackHeight + alignHeight + clipHeight + scrollHeight + gap * 3.0f;
+        const float rightColumnHeight = stackHeight + alignHeight + clipHeight + scrollHeight + virtualListHeight + gap * 4.0f;
         const float twoColumnHeight = std::max(leftColumnHeight, rightColumnHeight);
         const float singleColumnHeight = rowColumnHeight + stackHeight + flexHeight + alignHeight + clipHeight +
-            fillWrapHeight + responsiveHeight + scrollHeight + loaderHeight + gap * 8.0f;
+            fillWrapHeight + responsiveHeight + scrollHeight + virtualListHeight + loaderHeight + gap * 9.0f;
 
         if (twoColumns) {
             ui.row("layout.grid")
@@ -539,6 +616,7 @@ struct GalleryLayoutPage {
                             alignCard(ui, cardWidth);
                             clipCard(ui, cardWidth);
                             scrollCard(ui, cardWidth);
+                            virtualListCard(ui, cardWidth);
                         })
                         .build();
                 })
@@ -558,6 +636,7 @@ struct GalleryLayoutPage {
                 fillWrapCard(ui, cardWidth);
                 responsiveCard(ui, cardWidth);
                 scrollCard(ui, cardWidth);
+                virtualListCard(ui, cardWidth);
                 loaderCard(ui, cardWidth);
             })
             .build();

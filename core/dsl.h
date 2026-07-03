@@ -170,6 +170,7 @@ struct Element {
     std::string scrollContentSourceId;
     std::string scrollDragSourceId;
     std::string scrollThumbSourceId;
+    bool composeOnScrollOffsetChange = false;
     std::string sliderStateId;
     std::string sliderInputSourceId;
     std::string sliderFillSourceId;
@@ -688,6 +689,11 @@ public:
     Derived& onScrollOffsetChanged(std::function<void(float)> callback) {
         element_->interactive = true;
         element_->onScrollOffsetChanged = std::move(callback);
+        return self();
+    }
+
+    Derived& composeOnScrollOffsetChange(bool value = true) {
+        element_->composeOnScrollOffsetChange = value;
         return self();
     }
 
@@ -1597,7 +1603,8 @@ private:
     }
 
     static bool elementBlocksRetainedLayer(const Element& element) {
-        return element.interactive ||
+        return element.clip ||
+               element.interactive ||
                element.focusable ||
                element.hasImeRect ||
                element.onClick ||
