@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="EUI-NEO-DX11.vcxproj" Id="28424c9c-c799-4e9d-9b0c-d99b52651289" />
+</Solution>

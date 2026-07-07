@@ -1,0 +1,437 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="头文件">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="头文件\3rd">
+      <UniqueIdentifier>{d35e8695-ae24-4ec5-bfa2-e22ba443bccd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\3rd\md4c">
+      <UniqueIdentifier>{21c8e0c2-e8b5-4c9c-baf0-a9159cfe6287}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\3rd\md4c\src">
+      <UniqueIdentifier>{cf674d61-1e9b-42db-86be-b5867f0c4b4a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\components">
+      <UniqueIdentifier>{c50a6fd3-4bfe-4727-867a-7be6c3f33ba1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\components\workshop">
+      <UniqueIdentifier>{51d58e70-64f3-4d5b-9ea2-fd344ac30dbe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core">
+      <UniqueIdentifier>{c1677c5c-eb6e-4487-8126-4c34a11fe785}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\app">
+      <UniqueIdentifier>{c8070de6-8ffe-45e3-8666-bd0aa522de3c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\input">
+      <UniqueIdentifier>{fc7849a7-fbb0-4250-bb00-075c7370ee43}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\platform">
+      <UniqueIdentifier>{77df1629-8b37-46af-91e0-906780d8d664}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\render">
+      <UniqueIdentifier>{0424069c-191d-429e-8fdf-5b75fa0c84cf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\runtime">
+      <UniqueIdentifier>{e2fddff0-bac5-44af-85e2-4fee46a131eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\window">
+      <UniqueIdentifier>{4e9fc6d2-6e2b-489a-824a-04341ffd26fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\include">
+      <UniqueIdentifier>{df8b7658-d900-4ffb-9380-63281d10ea0d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\include\eui">
+      <UniqueIdentifier>{57c4cfa9-99be-4db8-af15-cd90eab36e78}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\include\eui\detail">
+      <UniqueIdentifier>{f2ab7038-f154-4859-be61-5c9422b74253}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\core\render\dx11">
+      <UniqueIdentifier>{b9285438-fbe3-4a42-920f-c5b47e75e277}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="3rd\nanosvg.h">
+      <Filter>头文件\3rd</Filter>
+    </ClInclude>
+    <ClInclude Include="3rd\nanosvgrast.h">
+      <Filter>头文件\3rd</Filter>
+    </ClInclude>
+    <ClInclude Include="3rd\stb_image.h">
+      <Filter>头文件\3rd</Filter>
+    </ClInclude>
+    <ClInclude Include="3rd\md4c\src\md4c.h">
+      <Filter>头文件\3rd\md4c\src</Filter>
+    </ClInclude>
+    <ClInclude Include="components\timepicker.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\toast.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\tooltip.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\virtuallist.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\barchart.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\button.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\card.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\carousel.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\checkbox.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\colorpicker.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\components.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\contextmenu.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\datatable.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\datepicker.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\dialog.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\dropdown.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\image.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\input.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\input_model.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\layout_debug.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\linechart.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\markdown.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\mousearea.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\navbar.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\panel.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\piechart.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\progress.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\radio.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\scroll.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\scrollview.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\segmented.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\sidebar.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\slider.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\stepper.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\switch.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\tabs.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\text.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\theme.h">
+      <Filter>头文件\components</Filter>
+    </ClInclude>
+    <ClInclude Include="components\workshop\heart_switch.h">
+      <Filter>头文件\components\workshop</Filter>
+    </ClInclude>
+    <ClInclude Include="components\workshop\neumorphic_button.h">
+      <Filter>头文件\components\workshop</Filter>
+    </ClInclude>
+    <ClInclude Include="components\workshop\tilt_card.h">
+      <Filter>头文件\components\workshop</Filter>
+    </ClInclude>
+    <ClInclude Include="core\animation.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\dsl.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\dsl_runtime.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\layout.h">
+      <Filter>头文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\app\app_runner.h">
+      <Filter>头文件\core\app</Filter>
+    </ClInclude>
+    <ClInclude Include="core\app\dsl_window_manager.h">
+      <Filter>头文件\core\app</Filter>
+    </ClInclude>
+    <ClInclude Include="core\app\dsl_window_runtime.h">
+      <Filter>头文件\core\app</Filter>
+    </ClInclude>
+    <ClInclude Include="core\app\frame_pacing.h">
+      <Filter>头文件\core\app</Filter>
+    </ClInclude>
+    <ClInclude Include="core\app\main_window_runtime.h">
+      <Filter>头文件\core\app</Filter>
+    </ClInclude>
+    <ClInclude Include="core\input\input_state.h">
+      <Filter>头文件\core\input</Filter>
+    </ClInclude>
+    <ClInclude Include="core\input\input_types.h">
+      <Filter>头文件\core\input</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\ime_bridge.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\native_bridge.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\network.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\performance_stats.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\platform.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\tray_bridge.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\platform\async.h">
+      <Filter>头文件\core\platform</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\primitive.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\primitive_geometry.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\render_backend.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\render_surface.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\render_types.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\text.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\text_types.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\image.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\image_source.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\image_types.h">
+      <Filter>头文件\core\render</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_input.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_instances.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_lifecycle.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_render.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_render_helpers.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_state_bindings.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_tree.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_update.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_animation.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_dirty.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_geometry.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\runtime\runtime_hit_test.h">
+      <Filter>头文件\core\runtime</Filter>
+    </ClInclude>
+    <ClInclude Include="core\window\window_backend.h">
+      <Filter>头文件\core\window</Filter>
+    </ClInclude>
+    <ClInclude Include="core\window\window_types.h">
+      <Filter>头文件\core\window</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\detail\dsl_app_impl.h">
+      <Filter>头文件\include\eui\detail</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\app.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\async.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\dsl.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\dsl_app.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\image.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\network.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\platform.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\signal.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\types.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui\window.h">
+      <Filter>头文件\include\eui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\eui_neo.h">
+      <Filter>头文件\include</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\dx11\dx11_backend.h">
+      <Filter>头文件\core\render\dx11</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="3rd\README.md">
+      <Filter>头文件\3rd</Filter>
+    </None>
+    <None Include="3rd\md4c\LICENSE.md">
+      <Filter>头文件\3rd\md4c</Filter>
+    </None>
+    <None Include="components\workshop\SKILL.md">
+      <Filter>头文件\components\workshop</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="3rd\md4c\src\md4c.c">
+      <Filter>头文件\3rd\md4c\src</Filter>
+    </ClCompile>
+    <ClCompile Include="apps\sidebar_starter\app.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="core\app\main_entry.cpp">
+      <Filter>头文件\core\app</Filter>
+    </ClCompile>
+    <ClCompile Include="core\app\win32_app_main.cpp">
+      <Filter>头文件\core\app</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\native_bridge.c">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\network.cpp">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\performance_stats.cpp">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\platform.cpp">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\tray_bridge.c">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\platform\async.cpp">
+      <Filter>头文件\core\platform</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\render_backend.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\stb_image_impl.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\text_impl_bridge.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\image.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\image_facade.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\image_source.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\primitive.cpp">
+      <Filter>头文件\core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\window\window_backend.cpp">
+      <Filter>头文件\core\window</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\dx11\dx11_backend.cpp">
+      <Filter>头文件\core\render\dx11</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

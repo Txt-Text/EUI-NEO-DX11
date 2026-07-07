@@ -556,37 +556,27 @@ inline void Runtime::prepareText(
         }
     }
 
-    const Rect frame = toPixelRect(instance.frame.value(), dpiScale);
+        const Rect frame = toPixelRect(instance.frame.value(), dpiScale);
     const float maxWidth = element.maxWidth > 0.0f ? toPixels(element.maxWidth, dpiScale) : frame.width;
+    const float maxHeight = frame.height;
     const float lineHeight = element.lineHeight > 0.0f ? toPixels(element.lineHeight, dpiScale) : 0.0f;
     Color textColor = instance.color.value();
     Transform transform = scaleTransform(instance.transform.value(), dpiScale);
     textColor.a *= instance.opacity.value();
-
-    float x = frame.x;
-    if (element.horizontalAlign == HorizontalAlign::Center) {
-        x = frame.x + frame.width * 0.5f;
-    } else if (element.horizontalAlign == HorizontalAlign::Right) {
-        x = frame.x + frame.width;
-    }
-
-    float y = frame.y;
-    if (element.verticalAlign == VerticalAlign::Center) {
-        y = frame.y + frame.height * 0.5f;
-    } else if (element.verticalAlign == VerticalAlign::Bottom) {
-        y = frame.y + frame.height;
-    }
     textColor.a *= renderTransform.opacity;
 
-    instance.primitive->setPosition(x, y);
+    instance.primitive->setPosition(frame.x, frame.y);
+
     instance.primitive->setTransformMatrix(combinedPrimitiveMatrix(renderTransform, frame, transform));
     instance.primitive->setColor(textColor);
     instance.primitive->setText(instance.text);
     instance.primitive->setFontFamily(instance.fontFamily);
     instance.primitive->setFontSize(toPixels(instance.fontSize, dpiScale));
     instance.primitive->setFontWeight(instance.fontWeight);
-    instance.primitive->setMaxWidth(maxWidth);
+        instance.primitive->setMaxWidth(maxWidth);
+    instance.primitive->setMaxHeight(maxHeight);
     instance.primitive->setWrap(instance.wrap);
+
     instance.primitive->setHorizontalAlign(instance.horizontalAlign);
     instance.primitive->setVerticalAlign(instance.verticalAlign);
     instance.primitive->setLineHeight(lineHeight);
@@ -608,37 +598,27 @@ inline void Runtime::renderText(
         }
     }
 
-    const Rect frame = toPixelRect(instance.frame.value(), dpiScale);
+        const Rect frame = toPixelRect(instance.frame.value(), dpiScale);
     const float maxWidth = element.maxWidth > 0.0f ? toPixels(element.maxWidth, dpiScale) : frame.width;
+    const float maxHeight = frame.height;
     const float lineHeight = element.lineHeight > 0.0f ? toPixels(element.lineHeight, dpiScale) : 0.0f;
     Color textColor = instance.color.value();
     Transform transform = scaleTransform(instance.transform.value(), dpiScale);
     textColor.a *= instance.opacity.value();
-
-    float x = frame.x;
-    if (element.horizontalAlign == HorizontalAlign::Center) {
-        x = frame.x + frame.width * 0.5f;
-    } else if (element.horizontalAlign == HorizontalAlign::Right) {
-        x = frame.x + frame.width;
-    }
-
-    float y = frame.y;
-    if (element.verticalAlign == VerticalAlign::Center) {
-        y = frame.y + frame.height * 0.5f;
-    } else if (element.verticalAlign == VerticalAlign::Bottom) {
-        y = frame.y + frame.height;
-    }
     textColor.a *= renderTransform.opacity;
 
-    instance.primitive->setPosition(x, y);
+    instance.primitive->setPosition(frame.x, frame.y);
+
     instance.primitive->setTransformMatrix(combinedPrimitiveMatrix(renderTransform, frame, transform));
     instance.primitive->setColor(textColor);
     instance.primitive->setText(instance.text);
     instance.primitive->setFontFamily(instance.fontFamily);
     instance.primitive->setFontSize(toPixels(instance.fontSize, dpiScale));
     instance.primitive->setFontWeight(instance.fontWeight);
-    instance.primitive->setMaxWidth(maxWidth);
+        instance.primitive->setMaxWidth(maxWidth);
+    instance.primitive->setMaxHeight(maxHeight);
     instance.primitive->setWrap(instance.wrap);
+
     instance.primitive->setHorizontalAlign(instance.horizontalAlign);
     instance.primitive->setVerticalAlign(instance.verticalAlign);
     instance.primitive->setLineHeight(lineHeight);

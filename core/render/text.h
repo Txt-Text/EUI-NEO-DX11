@@ -59,8 +59,10 @@ public:
     void setFontSize(float fontSize);
     void setFontWeight(int fontWeight);
     void setColor(const Color& color);
-    void setMaxWidth(float maxWidth);
+        void setMaxWidth(float maxWidth);
+    void setMaxHeight(float maxHeight);
     void setWrap(bool wrap);
+
     void setHorizontalAlign(HorizontalAlign align);
     void setVerticalAlign(VerticalAlign align);
     void setLineHeight(float lineHeight);

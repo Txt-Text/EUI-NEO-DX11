@@ -25,10 +25,12 @@ struct TextStyle {
     int fontWeight = 400;
     Color color = {1.0f, 1.0f, 1.0f, 1.0f};
     float maxWidth = 0.0f;
+    float maxHeight = 0.0f;
     bool wrap = false;
     HorizontalAlign horizontalAlign = HorizontalAlign::Left;
     VerticalAlign verticalAlign = VerticalAlign::Top;
     float lineHeight = 0.0f;
 };
+
 
 } // namespace core

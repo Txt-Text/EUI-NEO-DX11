@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="3rd\md4c\src\md4c.h" />
+    <ClInclude Include="3rd\nanosvg.h" />
+    <ClInclude Include="3rd\nanosvgrast.h" />
+    <ClInclude Include="3rd\stb_image.h" />
+    <ClInclude Include="components\barchart.h" />
+    <ClInclude Include="components\button.h" />
+    <ClInclude Include="components\card.h" />
+    <ClInclude Include="components\carousel.h" />
+    <ClInclude Include="components\checkbox.h" />
+    <ClInclude Include="components\colorpicker.h" />
+    <ClInclude Include="components\components.h" />
+    <ClInclude Include="components\contextmenu.h" />
+    <ClInclude Include="components\datatable.h" />
+    <ClInclude Include="components\datepicker.h" />
+    <ClInclude Include="components\dialog.h" />
+    <ClInclude Include="components\dropdown.h" />
+    <ClInclude Include="components\image.h" />
+    <ClInclude Include="components\input.h" />
+    <ClInclude Include="components\input_model.h" />
+    <ClInclude Include="components\layout_debug.h" />
+    <ClInclude Include="components\linechart.h" />
+    <ClInclude Include="components\markdown.h" />
+    <ClInclude Include="components\mousearea.h" />
+    <ClInclude Include="components\navbar.h" />
+    <ClInclude Include="components\panel.h" />
+    <ClInclude Include="components\piechart.h" />
+    <ClInclude Include="components\progress.h" />
+    <ClInclude Include="components\radio.h" />
+    <ClInclude Include="components\scroll.h" />
+    <ClInclude Include="components\scrollview.h" />
+    <ClInclude Include="components\segmented.h" />
+    <ClInclude Include="components\sidebar.h" />
+    <ClInclude Include="components\slider.h" />
+    <ClInclude Include="components\stepper.h" />
+    <ClInclude Include="components\switch.h" />
+    <ClInclude Include="components\tabs.h" />
+    <ClInclude Include="components\text.h" />
+    <ClInclude Include="components\theme.h" />
+    <ClInclude Include="components\timepicker.h" />
+    <ClInclude Include="components\toast.h" />
+    <ClInclude Include="components\tooltip.h" />
+    <ClInclude Include="components\virtuallist.h" />
+    <ClInclude Include="components\workshop\heart_switch.h" />
+    <ClInclude Include="components\workshop\neumorphic_button.h" />
+    <ClInclude Include="components\workshop\tilt_card.h" />
+    <ClInclude Include="core\animation.h" />
+    <ClInclude Include="core\app\app_runner.h" />
+    <ClInclude Include="core\app\dsl_window_manager.h" />
+    <ClInclude Include="core\app\dsl_window_runtime.h" />
+    <ClInclude Include="core\app\frame_pacing.h" />
+    <ClInclude Include="core\app\main_window_runtime.h" />
+    <ClInclude Include="core\dsl.h" />
+    <ClInclude Include="core\dsl_runtime.h" />
+    <ClInclude Include="core\input\input_state.h" />
+    <ClInclude Include="core\input\input_types.h" />
+    <ClInclude Include="core\layout.h" />
+    <ClInclude Include="core\platform\async.h" />
+    <ClInclude Include="core\platform\ime_bridge.h" />
+    <ClInclude Include="core\platform\native_bridge.h" />
+    <ClInclude Include="core\platform\network.h" />
+    <ClInclude Include="core\platform\performance_stats.h" />
+    <ClInclude Include="core\platform\platform.h" />
+    <ClInclude Include="core\platform\tray_bridge.h" />
+    <ClInclude Include="core\render\dx11\dx11_backend.h" />
+    <ClInclude Include="core\render\image.h" />
+    <ClInclude Include="core\render\image_source.h" />
+    <ClInclude Include="core\render\image_types.h" />
+    <ClInclude Include="core\render\primitive.h" />
+    <ClInclude Include="core\render\primitive_geometry.h" />
+    <ClInclude Include="core\render\render_backend.h" />
+    <ClInclude Include="core\render\render_surface.h" />
+    <ClInclude Include="core\render\render_types.h" />
+    <ClInclude Include="core\render\text.h" />
+    <ClInclude Include="core\render\text_types.h" />
+    <ClInclude Include="core\runtime\runtime_animation.h" />
+    <ClInclude Include="core\runtime\runtime_dirty.h" />
+    <ClInclude Include="core\runtime\runtime_geometry.h" />
+    <ClInclude Include="core\runtime\runtime_hit_test.h" />
+    <ClInclude Include="core\runtime\runtime_input.h" />
+    <ClInclude Include="core\runtime\runtime_instances.h" />
+    <ClInclude Include="core\runtime\runtime_lifecycle.h" />
+    <ClInclude Include="core\runtime\runtime_render.h" />
+    <ClInclude Include="core\runtime\runtime_render_helpers.h" />
+    <ClInclude Include="core\runtime\runtime_state_bindings.h" />
+    <ClInclude Include="core\runtime\runtime_tree.h" />
+    <ClInclude Include="core\runtime\runtime_update.h" />
+    <ClInclude Include="core\window\window_backend.h" />
+    <ClInclude Include="core\window\window_types.h" />
+    <ClInclude Include="include\eui\app.h" />
+    <ClInclude Include="include\eui\async.h" />
+    <ClInclude Include="include\eui\detail\dsl_app_impl.h" />
+    <ClInclude Include="include\eui\dsl.h" />
+    <ClInclude Include="include\eui\dsl_app.h" />
+    <ClInclude Include="include\eui\image.h" />
+    <ClInclude Include="include\eui\network.h" />
+    <ClInclude Include="include\eui\platform.h" />
+    <ClInclude Include="include\eui\signal.h" />
+    <ClInclude Include="include\eui\types.h" />
+    <ClInclude Include="include\eui\window.h" />
+    <ClInclude Include="include\eui_neo.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="3rd\md4c\LICENSE.md" />
+    <None Include="3rd\README.md" />
+    <None Include="components\workshop\SKILL.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="3rd\md4c\src\md4c.c" />
+    <ClCompile Include="apps\sidebar_starter\app.cpp" />
+    <ClCompile Include="core\app\main_entry.cpp" />
+    <ClCompile Include="core\app\win32_app_main.cpp" />
+    <ClCompile Include="core\platform\async.cpp" />
+    <ClCompile Include="core\platform\native_bridge.c" />
+    <ClCompile Include="core\platform\network.cpp" />
+    <ClCompile Include="core\platform\performance_stats.cpp" />
+    <ClCompile Include="core\platform\platform.cpp" />
+    <ClCompile Include="core\platform\tray_bridge.c" />
+    <ClCompile Include="core\render\dx11\dx11_backend.cpp" />
+    <ClCompile Include="core\render\image.cpp" />
+    <ClCompile Include="core\render\image_facade.cpp" />
+    <ClCompile Include="core\render\image_source.cpp" />
+    <ClCompile Include="core\render\primitive.cpp" />
+    <ClCompile Include="core\render\render_backend.cpp" />
+    <ClCompile Include="core\render\stb_image_impl.cpp" />
+    <ClCompile Include="core\render\text_impl_bridge.cpp" />
+    <ClCompile Include="core\window\window_backend.cpp" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{28424c9c-c799-4e9d-9b0c-d99b52651289}</ProjectGuid>
+    <RootNamespace>EUINEODX11</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>D:\.Programs\C++\EUI-NEO-DX11;D:\.Programs\C++\EUI-NEO-DX11\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>D:\.Programs\C++\EUI-NEO-DX11;D:\.Programs\C++\EUI-NEO-DX11\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Imm32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Imm32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Imm32.lib;Urlmon.lib;Pdh.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Imm32.lib;Urlmon.lib;Pdh.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

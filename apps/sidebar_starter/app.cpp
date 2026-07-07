@@ -8,12 +8,15 @@
 namespace app {
 
 const DslAppConfig& dslAppConfig() {
-    static const DslAppConfig config = DslAppConfig{}
+        static const DslAppConfig config = DslAppConfig{}
         .title("EUI Starter App")
         .pageId("sidebar_starter")
         .clearColor({0.07f, 0.08f, 0.10f, 1.0f})
         .windowSize(1380, 960)
-        .fps(90.0);
+        .fps(90.0)
+        .iconPath("assets/icon.png")
+        .iconFont("assets/Font Awesome 7 Free-Solid-900.otf");
+
     return config;
 }
 

@@ -2,6 +2,7 @@
 
 #include "core/render/primitive_geometry.h"
 #include "core/render/render_surface.h"
+#include "core/render/text_types.h"
 #include "core/window/window_types.h"
 
 #include <cstddef>
@@ -33,11 +34,21 @@ struct TextAtlasPageData {
 };
 
 struct TextDrawCommand {
-    const float* vertices = nullptr;
-    std::size_t vertexFloatCount = 0;
+    const char* utf8Text = nullptr;
+    const char* fontFamily = nullptr;
+    float originX = 0.0f;
+    float originY = 0.0f;
+    float maxWidth = 0.0f;
+    float maxHeight = 0.0f;
+    float fontSize = 16.0f;
+    float lineHeight = 0.0f;
+    int fontWeight = 400;
+    bool wrap = false;
+    HorizontalAlign horizontalAlign = HorizontalAlign::Left;
+    VerticalAlign verticalAlign = VerticalAlign::Top;
     core::Color color{};
-    TextAtlasPageData grayAtlas{};
-    TextAtlasPageData colorAtlas{};
+    core::TransformMatrix transformMatrix{};
+    bool hasTransformMatrix = false;
 };
 
 struct RenderFrameStats {

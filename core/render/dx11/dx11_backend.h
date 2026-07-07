@@ -1,0 +1,74 @@
+#pragma once
+
+#include "core/render/render_backend.h"
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <d2d1_1.h>
+#include <d3d11.h>
+#include <dwrite.h>
+#include <dxgi1_2.h>
+#include <wrl/client.h>
+
+namespace core::render {
+
+class Dx11Backend final : public RenderBackend {
+public:
+    explicit Dx11Backend(core::window::Handle window);
+    ~Dx11Backend() override;
+
+    bool initialize() override;
+    bool valid() const override;
+    void makeCurrent() override;
+    void beginFrame(const RenderSurface& surface) override;
+    void present() override;
+
+    bool ensureRenderCache(int width, int height) override;
+    bool renderCacheWasRecreated() const override;
+    void releaseRenderCache() override;
+    void beginRenderCacheFrame(int width, int height, const std::vector<core::Rect>& repaintRects) override;
+    void endRenderCacheFrame() override;
+    void blitRenderCache(int width, int height, RenderCacheBlitMode mode, const std::vector<core::Rect>& dirtyRects) override;
+
+    void clear(const core::Color& color) override;
+    void setScissor(bool enabled, const core::Rect& rect, int framebufferHeight) override;
+    void prepareBackdropBlur(const core::Rect& bounds, float blur, int windowWidth, int windowHeight) override;
+    void drawRoundedRect(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight) override;
+    void drawPolygon(const PolygonDrawCommand& command, int windowWidth, int windowHeight) override;
+    void drawText(const TextDrawCommand& command, int windowWidth, int windowHeight) override;
+
+private:
+    bool createDeviceResources();
+    bool createWindowSizeDependentResources(int width, int height);
+    void releaseWindowSizeDependentResources();
+    D2D1_COLOR_F toD2DColor(const core::Color& color, float opacityScale = 1.0f) const;
+    void fillGeometryWithColor(ID2D1Geometry* geometry, const core::Color& color, float opacity);
+    void strokeGeometryWithColor(ID2D1Geometry* geometry, const core::Color& color, float width, float opacity);
+
+    HWND hwnd_ = nullptr;
+    int currentWidth_ = 0;
+    int currentHeight_ = 0;
+    bool valid_ = false;
+    bool renderCacheRecreated_ = false;
+    bool clipActive_ = false;
+
+    Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3dContext_;
+    Microsoft::WRL::ComPtr<IDXGISwapChain1> swapChain_;
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> backBufferTexture_;
+    Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizerState_;
+
+    Microsoft::WRL::ComPtr<ID2D1Factory1> d2dFactory_;
+    Microsoft::WRL::ComPtr<ID2D1Device> d2dDevice_;
+    Microsoft::WRL::ComPtr<ID2D1DeviceContext> d2dContext_;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2dTargetBitmap_;
+    Microsoft::WRL::ComPtr<IDWriteFactory> dwriteFactory_;
+};
+
+} // namespace core::render

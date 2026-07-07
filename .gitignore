@@ -9,3 +9,39 @@
 /tmp/
 /temp/
 /.github/skills/
+
+# vs 垃圾文件
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.dbmdl
+
+# 编译输出目录
+Debug/
+Release/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.lib
+*.exp
+*.exp
+*.exe
+*.dll
+
+# 可能的 CMake 缓存目录
+out/
+build/
+CMakeCache.txt
+CMakeFiles/

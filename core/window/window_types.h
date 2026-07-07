@@ -12,8 +12,7 @@ enum class CursorType {
 };
 
 enum class RenderApi {
-    OpenGL,
-    Vulkan
+    Dx11
 };
 
 struct WindowCreateRequest {
@@ -24,7 +23,7 @@ struct WindowCreateRequest {
     bool highDpi = true;
     bool modal = false;
     Handle parent = nullptr;
-    RenderApi renderApi = RenderApi::OpenGL;
+    RenderApi renderApi = RenderApi::Dx11;
 };
 
 struct NativeWindowInfo {

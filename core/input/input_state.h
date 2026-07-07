@@ -3,15 +3,6 @@
 #include "core/input/input_types.h"
 #include "core/window/window_backend.h"
 
-#if !defined(EUI_WINDOW_BACKEND_SDL2)
-#include "core/platform/ime_bridge.h"
-
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
-#include <GLFW/glfw3.h>
-#endif
-
 #include <unordered_map>
 #include <utility>
 
@@ -191,58 +182,7 @@ inline void queueKeyInput(window::Handle window, InputKey key, bool ctrl = false
 }
 
 inline void installInputCallbacks(window::Handle window) {
-    if (!window) {
-        return;
-    }
-
-#if !defined(EUI_WINDOW_BACKEND_SDL2)
-    GLFWwindow* glfwWindow = static_cast<GLFWwindow*>(window);
-    eui_ime_install_message_filter(glfwWindow);
-    glfwSetCharCallback(glfwWindow, [](GLFWwindow* currentWindow, unsigned int codepoint) {
-        detail::InputQueue& queue = detail::inputQueue(currentWindow);
-        detail::appendUtf8(queue.text, codepoint);
-        eui_ime_clear_composition(currentWindow);
-        queue.compositionText.clear();
-        queue.compositionChanged = true;
-        detail::setComposing(currentWindow, false);
-        detail::setCompositionText(currentWindow, {});
-    });
-
-    glfwSetScrollCallback(glfwWindow, [](GLFWwindow* currentWindow, double xoffset, double yoffset) {
-        queueScrollInput(currentWindow, xoffset, yoffset);
-    });
-
-    glfwSetKeyCallback(glfwWindow, [](GLFWwindow* currentWindow, int key, int, int action, int mods) {
-        if (action != GLFW_PRESS && action != GLFW_REPEAT) {
-            return;
-        }
-
-        const bool ctrl = (mods & GLFW_MOD_CONTROL) != 0 || (mods & GLFW_MOD_SUPER) != 0;
-        const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
-        detail::setComposing(currentWindow, eui_ime_is_composing(currentWindow) != 0);
-        switch (key) {
-        case GLFW_KEY_BACKSPACE: queueKeyInput(currentWindow, InputKey::Backspace, ctrl, shift); break;
-        case GLFW_KEY_DELETE: queueKeyInput(currentWindow, InputKey::Delete, ctrl, shift); break;
-        case GLFW_KEY_ENTER:
-        case GLFW_KEY_KP_ENTER: queueKeyInput(currentWindow, InputKey::Enter, ctrl, shift); break;
-        case GLFW_KEY_LEFT: queueKeyInput(currentWindow, InputKey::Left, ctrl, shift); break;
-        case GLFW_KEY_RIGHT: queueKeyInput(currentWindow, InputKey::Right, ctrl, shift); break;
-        case GLFW_KEY_UP: queueKeyInput(currentWindow, InputKey::Up, ctrl, shift); break;
-        case GLFW_KEY_DOWN: queueKeyInput(currentWindow, InputKey::Down, ctrl, shift); break;
-        case GLFW_KEY_HOME: queueKeyInput(currentWindow, InputKey::Home, ctrl, shift); break;
-        case GLFW_KEY_END: queueKeyInput(currentWindow, InputKey::End, ctrl, shift); break;
-        case GLFW_KEY_ESCAPE: queueKeyInput(currentWindow, InputKey::Escape, ctrl, shift); break;
-        case GLFW_KEY_A: queueKeyInput(currentWindow, InputKey::A, ctrl, shift); break;
-        case GLFW_KEY_C: queueKeyInput(currentWindow, InputKey::C, ctrl, shift); break;
-        case GLFW_KEY_V: queueKeyInput(currentWindow, InputKey::V, ctrl, shift); break;
-        case GLFW_KEY_X: queueKeyInput(currentWindow, InputKey::X, ctrl, shift); break;
-        case GLFW_KEY_Y: queueKeyInput(currentWindow, InputKey::Y, ctrl, shift); break;
-        case GLFW_KEY_Z: queueKeyInput(currentWindow, InputKey::Z, ctrl, shift); break;
-        default:
-            break;
-        }
-    });
-#endif
+    (void)window;
 }
 
 inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle window) {
@@ -274,22 +214,9 @@ inline std::pair<KeyboardEvent, ScrollEvent> consumeInputEvents(window::Handle w
     if (!queuedCompositionChanged && keyboard.composing) {
         keyboard.compositionText = previousCompositionText;
     }
-#if !defined(EUI_WINDOW_BACKEND_SDL2) && (defined(_WIN32) || defined(__APPLE__))
-    char compositionBuffer[512];
-    const int compositionLength = eui_ime_get_composition_string_utf8(
-        static_cast<GLFWwindow*>(window),
-        compositionBuffer,
-        static_cast<int>(sizeof(compositionBuffer)));
-    if (compositionLength > 0) {
-        keyboard.compositionText = compositionBuffer;
-        keyboard.composing = true;
-        detail::setComposing(window, true);
-    } else if (!queuedCompositionChanged) {
+    if (!queuedCompositionChanged && !keyboard.composing) {
         keyboard.compositionText.clear();
-        keyboard.composing = false;
-        detail::setComposing(window, false);
     }
-#endif
     keyboard.compositionChanged = queuedCompositionChanged ||
                                   wasComposing != keyboard.composing ||
                                   previousCompositionText != keyboard.compositionText;
@@ -320,11 +247,6 @@ inline bool hasPendingPointerInput(window::Handle window, float dpiScale = 1.0f)
 }
 
 inline void releaseInputQueue(window::Handle window) {
-#if !defined(EUI_WINDOW_BACKEND_SDL2)
-    if (window != nullptr) {
-        eui_ime_uninstall_message_filter(static_cast<GLFWwindow*>(window));
-    }
-#endif
     detail::inputQueues().erase(window);
     detail::pointerStates().erase(window);
     detail::composingStates().erase(window);

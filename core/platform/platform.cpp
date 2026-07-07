@@ -358,7 +358,7 @@ std::vector<std::string> parseWindowsSelection(const std::vector<wchar_t>& buffe
     const std::filesystem::path directory(first);
     while (*cursor != L'\0') {
         const std::wstring filename = cursor;
-        paths.push_back((directory / filename).u8string());
+        paths.push_back((directory / filename).string());
         cursor += filename.size() + 1;
     }
     return paths;

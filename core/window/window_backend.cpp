@@ -1,15 +1,7 @@
 #include "core/window/window_backend.h"
+
 #include "core/platform/native_bridge.h"
 
-#include <algorithm>
-
-#if defined(EUI_WINDOW_BACKEND_SDL2)
-
-#include <SDL.h>
-#if defined(_WIN32) || defined(__APPLE__)
-#include <SDL_syswm.h>
-#endif
-#if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -18,352 +10,369 @@
 #endif
 #include <windows.h>
 #include <imm.h>
-#endif
+
+#include <algorithm>
+#include <cstring>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 
 namespace core::window {
 
 namespace {
 
-void configureOpenGLWindowAttributes() {
-    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+constexpr const wchar_t* kWindowClassName = L"EUI_NEO_DX11_WINDOW";
+
+std::vector<HWND>& windows() {
+    static std::vector<HWND> handles;
+    return handles;
 }
 
-} // namespace
+std::unordered_map<HWND, HICON>& windowIcons() {
+    static std::unordered_map<HWND, HICON> icons;
+    return icons;
+}
 
-#if defined(_WIN32)
-namespace {
+
+std::wstring utf8ToWide(const char* text) {
+    if (text == nullptr || text[0] == '\0') {
+        return {};
+    }
+    const int size = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
+    if (size <= 0) {
+        return {};
+    }
+    std::wstring result(static_cast<std::size_t>(size - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), size);
+    return result;
+}
+
+std::string wideToUtf8(const std::wstring& text) {
+    if (text.empty()) {
+        return {};
+    }
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) {
+        return {};
+    }
+    std::string result(static_cast<std::size_t>(size - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, result.data(), size, nullptr, nullptr);
+    return result;
+}
 
 LONG roundLong(float value) {
     return static_cast<LONG>(value >= 0.0f ? value + 0.5f : value - 0.5f);
 }
 
-HWND hwndForWindow(Handle window) {
-    return static_cast<HWND>(nativeWindowInfo(window).platformWindow);
+bool isDescendantWindow(HWND root, HWND candidate) {
+    HWND current = candidate;
+    while (current != nullptr) {
+        if (current == root) {
+            return true;
+        }
+        current = GetParent(current);
+    }
+    return false;
 }
 
-} // namespace
-#endif
-
-Handle createWindow(const WindowCreateRequest& request) {
-    if (request.renderApi == RenderApi::OpenGL) {
-        configureOpenGLWindowAttributes();
+bool windowOwnsPointer(HWND hwnd) {
+    if (hwnd == nullptr) {
+        return false;
+    }
+    const HWND capture = GetCapture();
+    if (capture != nullptr) {
+        return capture == hwnd || isDescendantWindow(hwnd, capture);
     }
 
-    Uint32 flags = 0;
-    if (request.highDpi) {
-        flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+    POINT point{};
+    if (!GetCursorPos(&point)) {
+        return false;
     }
-    if (request.resizable) {
-        flags |= SDL_WINDOW_RESIZABLE;
-    }
-    flags |= request.renderApi == RenderApi::Vulkan ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL;
-
-    return SDL_CreateWindow(
-        request.title != nullptr ? request.title : "",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        request.width,
-        request.height,
-        flags);
+    const HWND hovered = WindowFromPoint(point);
+    return hovered == hwnd || isDescendantWindow(hwnd, hovered);
 }
 
-void destroyWindow(Handle window) {
-    if (window != nullptr) {
-        SDL_DestroyWindow(static_cast<SDL_Window*>(window));
-    }
-}
+void registerWindowClass() {
 
-NativeWindowInfo nativeWindowInfo(Handle window) {
-    NativeWindowInfo result;
-    result.handle = window;
-#if defined(_WIN32) || defined(__APPLE__)
-    if (window == nullptr) {
-        return result;
-    }
-    SDL_SysWMinfo info;
-    SDL_VERSION(&info.version);
-    if (SDL_GetWindowWMInfo(static_cast<SDL_Window*>(window), &info) != SDL_TRUE) {
-        return result;
-    }
-#if defined(_WIN32)
-    if (info.subsystem == SDL_SYSWM_WINDOWS) {
-        result.platformWindow = info.info.win.window;
-    }
-#elif defined(__APPLE__)
-    if (info.subsystem == SDL_SYSWM_COCOA) {
-        result.platformWindow = info.info.cocoa.window;
-    }
-#endif
-#endif
-    return result;
-}
-
-ContextKey currentContextKey() {
-    return SDL_GL_GetCurrentContext();
-}
-
-double timeSeconds() {
-    const Uint64 frequency = SDL_GetPerformanceFrequency();
-    return frequency > 0
-        ? static_cast<double>(SDL_GetPerformanceCounter()) / static_cast<double>(frequency)
-        : 0.0;
-}
-
-void postEmptyEvent() {
-    SDL_Event event{};
-    event.type = SDL_USEREVENT;
-    SDL_PushEvent(&event);
-}
-
-void getCursorPosition(Handle, double& x, double& y) {
-    int cursorX = 0;
-    int cursorY = 0;
-    SDL_GetMouseState(&cursorX, &cursorY);
-    x = static_cast<double>(cursorX);
-    y = static_cast<double>(cursorY);
-}
-
-bool isMouseButtonDown(Handle, int button) {
-    const Uint32 state = SDL_GetMouseState(nullptr, nullptr);
-    const Uint32 mask = button == 1 ? SDL_BUTTON_RMASK : SDL_BUTTON_LMASK;
-    return (state & mask) != 0;
-}
-
-std::string clipboardText(Handle) {
-    char* text = SDL_GetClipboardText();
-    if (text == nullptr) {
-        return {};
-    }
-    std::string result(text);
-    SDL_free(text);
-    return result;
-}
-
-void setClipboardText(const std::string& text) {
-    SDL_SetClipboardText(text.c_str());
-}
-
-CursorHandle createStandardCursor(CursorType type) {
-    return SDL_CreateSystemCursor(type == CursorType::Hand ? SDL_SYSTEM_CURSOR_HAND : SDL_SYSTEM_CURSOR_ARROW);
-}
-
-void setCursor(Handle, CursorHandle cursor) {
-    SDL_SetCursor(static_cast<SDL_Cursor*>(cursor));
-}
-
-void destroyCursor(CursorHandle cursor) {
-    SDL_FreeCursor(static_cast<SDL_Cursor*>(cursor));
-}
-
-void setWindowIcon(Handle window, int width, int height, unsigned char* pixels) {
-    if (window == nullptr || pixels == nullptr || width <= 0 || height <= 0) {
+    static bool registered = false;
+    if (registered) {
         return;
     }
-    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(
-        pixels, width, height, 32, width * 4, SDL_PIXELFORMAT_RGBA32);
-    if (surface != nullptr) {
-        SDL_SetWindowIcon(static_cast<SDL_Window*>(window), surface);
-        SDL_FreeSurface(surface);
-    }
-    eui_set_application_icon_rgba(width, height, pixels);
-}
 
-void setImeCursorRect(Handle window, float x, float y, float width, float height) {
-#if defined(_WIN32)
-    HWND hwnd = hwndForWindow(window);
-    if (hwnd != nullptr) {
-        HIMC context = ImmGetContext(hwnd);
-        if (context != nullptr) {
-            const double fontHeight = std::max(12.0f, height);
-            const LONG caretX = roundLong(x);
-            const LONG caretY = roundLong(y + height);
-            const LONG candidateY = roundLong(y + height * 0.45f);
-
-            COMPOSITIONFORM composition{};
-            composition.dwStyle = CFS_FORCE_POSITION;
-            composition.ptCurrentPos.x = caretX;
-            composition.ptCurrentPos.y = caretY;
-            composition.rcArea.left = roundLong(x);
-            composition.rcArea.top = roundLong(y);
-            composition.rcArea.right = roundLong(x + width);
-            composition.rcArea.bottom = roundLong(y + height);
-            ImmSetCompositionWindow(context, &composition);
-
-            CANDIDATEFORM candidate{};
-            candidate.dwIndex = 0;
-            candidate.dwStyle = CFS_CANDIDATEPOS;
-            candidate.ptCurrentPos.x = caretX;
-            candidate.ptCurrentPos.y = candidateY;
-            candidate.rcArea = composition.rcArea;
-            ImmSetCandidateWindow(context, &candidate);
-            LOGFONTW font{};
-            font.lfHeight = -roundLong(static_cast<float>(fontHeight));
-            font.lfCharSet = DEFAULT_CHARSET;
-            font.lfQuality = CLEARTYPE_QUALITY;
-            wcscpy_s(font.lfFaceName, LF_FACESIZE, L"Microsoft YaHei UI");
-            ImmSetCompositionFontW(context, &font);
-
-            ImmReleaseContext(hwnd, context);
-        }
-    }
-
-    SDL_Rect rect{
-        roundLong(x),
-        roundLong(y),
-        roundLong(width),
-        roundLong(height)
-    };
-    SDL_SetTextInputRect(&rect);
-#else
-    int windowWidth = 0;
-    int windowHeight = 0;
-    int drawableWidth = 0;
-    int drawableHeight = 0;
-    SDL_GetWindowSize(static_cast<SDL_Window*>(window), &windowWidth, &windowHeight);
-    SDL_GL_GetDrawableSize(static_cast<SDL_Window*>(window), &drawableWidth, &drawableHeight);
-    const float scaleX = windowWidth > 0 && drawableWidth > 0
-        ? static_cast<float>(drawableWidth) / static_cast<float>(windowWidth)
-        : 1.0f;
-    const float scaleY = windowHeight > 0 && drawableHeight > 0
-        ? static_cast<float>(drawableHeight) / static_cast<float>(windowHeight)
-        : 1.0f;
-    SDL_Rect rect{
-        static_cast<int>(x / scaleX),
-        static_cast<int>(y / scaleY),
-        static_cast<int>(width / scaleX),
-        static_cast<int>(height / scaleY)
-    };
-    SDL_SetTextInputRect(&rect);
-#endif
-}
-
-} // namespace core::window
-
-#else
-
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
-#include <GLFW/glfw3.h>
-
-#include "core/platform/ime_bridge.h"
-
-namespace core::window {
-
-namespace {
-
-void configureOpenGLWindowHints() {
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_SAMPLES, 0);
-    glfwWindowHint(GLFW_RED_BITS, 8);
-    glfwWindowHint(GLFW_GREEN_BITS, 8);
-    glfwWindowHint(GLFW_BLUE_BITS, 8);
-    glfwWindowHint(GLFW_ALPHA_BITS, 8);
-    glfwWindowHint(GLFW_DEPTH_BITS, 16);
-    glfwWindowHint(GLFW_STENCIL_BITS, 0);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    WNDCLASSEXW windowClass{};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.style = CS_HREDRAW | CS_VREDRAW;
+    windowClass.lpfnWndProc = DefWindowProcW;
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    windowClass.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    windowClass.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
+    windowClass.lpszClassName = kWindowClassName;
+    RegisterClassExW(&windowClass);
+    registered = true;
 }
 
 } // namespace
 
 Handle createWindow(const WindowCreateRequest& request) {
-    GLFWwindow* shareContext = nullptr;
-    if (request.renderApi == RenderApi::Vulkan) {
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    } else {
-        configureOpenGLWindowHints();
-        shareContext = static_cast<GLFWwindow*>(request.parent);
-    }
-    glfwWindowHint(GLFW_RESIZABLE, request.resizable ? GLFW_TRUE : GLFW_FALSE);
+    registerWindowClass();
 
-    return glfwCreateWindow(
-        request.width,
-        request.height,
-        request.title != nullptr ? request.title : "",
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    if (!request.resizable) {
+        style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+    }
+
+    RECT rect{0, 0, std::max(1, request.width), std::max(1, request.height)};
+    AdjustWindowRectEx(&rect, style, FALSE, 0);
+
+    HWND parent = static_cast<HWND>(request.parent);
+    const std::wstring title = utf8ToWide(request.title != nullptr ? request.title : "");
+    HWND hwnd = CreateWindowExW(
+        0,
+        kWindowClassName,
+        title.empty() ? L"EUI-NEO" : title.c_str(),
+        style,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        parent,
         nullptr,
-        shareContext);
+        GetModuleHandleW(nullptr),
+        nullptr);
+    if (hwnd != nullptr) {
+        windows().push_back(hwnd);
+    }
+    return hwnd;
 }
 
 void destroyWindow(Handle window) {
-    if (window != nullptr) {
-        glfwDestroyWindow(static_cast<GLFWwindow*>(window));
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
     }
+    auto& handles = windows();
+    handles.erase(std::remove(handles.begin(), handles.end(), hwnd), handles.end());
+    auto& icons = windowIcons();
+    const auto iconIt = icons.find(hwnd);
+    if (iconIt != icons.end()) {
+        DestroyIcon(iconIt->second);
+        icons.erase(iconIt);
+    }
+    DestroyWindow(hwnd);
 }
+
 
 NativeWindowInfo nativeWindowInfo(Handle window) {
     NativeWindowInfo result;
     result.handle = window;
+    result.platformWindow = window;
     return result;
 }
 
 ContextKey currentContextKey() {
-    return glfwGetCurrentContext();
+    return nullptr;
 }
 
 double timeSeconds() {
-    return glfwGetTime();
+    LARGE_INTEGER frequency{};
+    LARGE_INTEGER counter{};
+    if (!QueryPerformanceFrequency(&frequency) || !QueryPerformanceCounter(&counter) || frequency.QuadPart <= 0) {
+        return 0.0;
+    }
+    return static_cast<double>(counter.QuadPart) / static_cast<double>(frequency.QuadPart);
 }
 
 void postEmptyEvent() {
-    glfwPostEmptyEvent();
+    for (HWND hwnd : windows()) {
+        PostMessageW(hwnd, WM_NULL, 0, 0);
+    }
 }
 
 void getCursorPosition(Handle window, double& x, double& y) {
-    glfwGetCursorPos(static_cast<GLFWwindow*>(window), &x, &y);
+    HWND hwnd = static_cast<HWND>(window);
+    if (!windowOwnsPointer(hwnd)) {
+        x = -1000000.0;
+        y = -1000000.0;
+        return;
+    }
+
+    POINT point{};
+    GetCursorPos(&point);
+    ScreenToClient(hwnd, &point);
+    x = static_cast<double>(point.x);
+    y = static_cast<double>(point.y);
 }
 
 bool isMouseButtonDown(Handle window, int button) {
-    const int glfwButton = button == 1 ? GLFW_MOUSE_BUTTON_RIGHT : GLFW_MOUSE_BUTTON_LEFT;
-    return glfwGetMouseButton(static_cast<GLFWwindow*>(window), glfwButton) == GLFW_PRESS;
+    if (!windowOwnsPointer(static_cast<HWND>(window))) {
+        return false;
+    }
+    const int key = button == 1 ? VK_RBUTTON : VK_LBUTTON;
+    return (GetKeyState(key) & 0x8000) != 0;
 }
 
+
 std::string clipboardText(Handle window) {
-    const char* text = glfwGetClipboardString(static_cast<GLFWwindow*>(window));
-    return text != nullptr ? text : "";
+    if (!OpenClipboard(static_cast<HWND>(window))) {
+        return {};
+    }
+    std::string result;
+    HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+    if (handle != nullptr) {
+        const wchar_t* text = static_cast<const wchar_t*>(GlobalLock(handle));
+        if (text != nullptr) {
+            result = wideToUtf8(text);
+            GlobalUnlock(handle);
+        }
+    }
+    CloseClipboard();
+    return result;
 }
 
 void setClipboardText(const std::string& text) {
-    glfwSetClipboardString(glfwGetCurrentContext(), text.c_str());
+    const std::wstring wide = utf8ToWide(text.c_str());
+    if (!OpenClipboard(nullptr)) {
+        return;
+    }
+    EmptyClipboard();
+    const SIZE_T bytes = (wide.size() + 1u) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (memory != nullptr) {
+        void* data = GlobalLock(memory);
+        if (data != nullptr) {
+            std::memcpy(data, wide.c_str(), bytes);
+            GlobalUnlock(memory);
+            SetClipboardData(CF_UNICODETEXT, memory);
+            memory = nullptr;
+        }
+    }
+    if (memory != nullptr) {
+        GlobalFree(memory);
+    }
+    CloseClipboard();
 }
 
 CursorHandle createStandardCursor(CursorType type) {
-    return glfwCreateStandardCursor(type == CursorType::Hand ? GLFW_HAND_CURSOR : GLFW_ARROW_CURSOR);
+    return LoadCursorW(nullptr, type == CursorType::Hand ? IDC_HAND : IDC_ARROW);
 }
 
-void setCursor(Handle window, CursorHandle cursor) {
-    glfwSetCursor(static_cast<GLFWwindow*>(window), static_cast<GLFWcursor*>(cursor));
+void setCursor(Handle, CursorHandle cursor) {
+    SetCursor(static_cast<HCURSOR>(cursor));
 }
 
-void destroyCursor(CursorHandle cursor) {
-    glfwDestroyCursor(static_cast<GLFWcursor*>(cursor));
-}
+void destroyCursor(CursorHandle) {}
 
 void setWindowIcon(Handle window, int width, int height, unsigned char* pixels) {
-    if (window == nullptr || pixels == nullptr || width <= 0 || height <= 0) {
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr || pixels == nullptr || width <= 0 || height <= 0) {
         return;
     }
-    GLFWimage image{};
-    image.width = width;
-    image.height = height;
-    image.pixels = pixels;
-    glfwSetWindowIcon(static_cast<GLFWwindow*>(window), 1, &image);
+
+    BITMAPV5HEADER bitmapHeader{};
+    bitmapHeader.bV5Size = sizeof(bitmapHeader);
+    bitmapHeader.bV5Width = width;
+    bitmapHeader.bV5Height = -height;
+    bitmapHeader.bV5Planes = 1;
+    bitmapHeader.bV5BitCount = 32;
+    bitmapHeader.bV5Compression = BI_BITFIELDS;
+    bitmapHeader.bV5RedMask = 0x00FF0000;
+    bitmapHeader.bV5GreenMask = 0x0000FF00;
+    bitmapHeader.bV5BlueMask = 0x000000FF;
+    bitmapHeader.bV5AlphaMask = 0xFF000000;
+
+    void* dibPixels = nullptr;
+    HDC screen = GetDC(nullptr);
+    HBITMAP colorBitmap = CreateDIBSection(screen,
+                                           reinterpret_cast<BITMAPINFO*>(&bitmapHeader),
+                                           DIB_RGB_COLORS,
+                                           &dibPixels,
+                                           nullptr,
+                                           0);
+    ReleaseDC(nullptr, screen);
+    if (colorBitmap == nullptr || dibPixels == nullptr) {
+        if (colorBitmap != nullptr) {
+            DeleteObject(colorBitmap);
+        }
+        return;
+    }
+
+    auto* destination = static_cast<unsigned char*>(dibPixels);
+    const std::size_t pixelCount = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    for (std::size_t i = 0; i < pixelCount; ++i) {
+        const unsigned char r = pixels[i * 4 + 0];
+        const unsigned char g = pixels[i * 4 + 1];
+        const unsigned char b = pixels[i * 4 + 2];
+        const unsigned char a = pixels[i * 4 + 3];
+        destination[i * 4 + 0] = b;
+        destination[i * 4 + 1] = g;
+        destination[i * 4 + 2] = r;
+        destination[i * 4 + 3] = a;
+    }
+
+    HBITMAP maskBitmap = CreateBitmap(width, height, 1, 1, nullptr);
+    ICONINFO iconInfo{};
+    iconInfo.fIcon = TRUE;
+    iconInfo.hbmMask = maskBitmap;
+    iconInfo.hbmColor = colorBitmap;
+    HICON icon = CreateIconIndirect(&iconInfo);
+    DeleteObject(maskBitmap);
+    DeleteObject(colorBitmap);
+    if (icon == nullptr) {
+        return;
+    }
+
+    auto& icons = windowIcons();
+    const auto existing = icons.find(hwnd);
+    if (existing != icons.end()) {
+        DestroyIcon(existing->second);
+    }
+    icons[hwnd] = icon;
+
+    SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(icon));
+    SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(icon));
     eui_set_application_icon_rgba(width, height, pixels);
 }
 
+
 void setImeCursorRect(Handle window, float x, float y, float width, float height) {
-    eui_ime_set_cursor_rect_with_font(static_cast<GLFWwindow*>(window), x, y, width, height, height);
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+    HIMC context = ImmGetContext(hwnd);
+    if (context == nullptr) {
+        return;
+    }
+
+    const LONG caretX = roundLong(x);
+    const LONG caretY = roundLong(y + height);
+    COMPOSITIONFORM composition{};
+    composition.dwStyle = CFS_FORCE_POSITION;
+    composition.ptCurrentPos.x = caretX;
+    composition.ptCurrentPos.y = caretY;
+    composition.rcArea.left = roundLong(x);
+    composition.rcArea.top = roundLong(y);
+    composition.rcArea.right = roundLong(x + width);
+    composition.rcArea.bottom = roundLong(y + height);
+    ImmSetCompositionWindow(context, &composition);
+
+    CANDIDATEFORM candidate{};
+    candidate.dwIndex = 0;
+    candidate.dwStyle = CFS_CANDIDATEPOS;
+    candidate.ptCurrentPos.x = caretX;
+    candidate.ptCurrentPos.y = roundLong(y + height * 0.45f);
+    candidate.rcArea = composition.rcArea;
+    ImmSetCandidateWindow(context, &candidate);
+
+    LOGFONTW font{};
+    font.lfHeight = -roundLong(std::max(12.0f, height));
+    font.lfCharSet = DEFAULT_CHARSET;
+    font.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(font.lfFaceName, LF_FACESIZE, L"Microsoft YaHei UI");
+    ImmSetCompositionFontW(context, &font);
+    ImmReleaseContext(hwnd, context);
 }
 
 } // namespace core::window
-
-#endif
