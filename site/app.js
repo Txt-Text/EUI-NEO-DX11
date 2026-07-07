@@ -3,9 +3,10 @@ const copy = {
     "nav.docs": "文档",
     "nav.rendering": "渲染",
     "nav.components": "组件",
-    "nav.start": "开始",
-    "hero.eyebrow": "C++17 · OpenGL / Vulkan · GLFW / SDL2",
+        "nav.start": "开始",
+    "hero.eyebrow": "C++20 · Direct3D 11 · Win32",
     "hero.title": "EUI-NEO",
+
     "hero.lede": "一个面向高性能桌面工具、仪表盘和组件系统的轻量级 UI 框架。",
     "hero.docs": "查阅文档",
     "hero.github": "GitHub",
@@ -17,36 +18,41 @@ const copy = {
     "why.eyebrow": "Why EUI-NEO",
     "why.title": "为 C++ 应用保留速度、控制力和现代 UI 体验。",
     "why.performance.title": "按需渲染",
-    "why.performance.text": "静止时等待事件，有动画才推进帧；脏区、framebuffer cache 和 retained layer cache 减少重复绘制。",
-    "why.backends.title": "后端可选",
-    "why.backends.text": "GLFW / SDL2 窗口后端，OpenGL / Vulkan 渲染后端，同一套 DSL 输出。",
+        "why.performance.text": "静止时等待事件，有动画才推进帧；脏区、framebuffer cache 和 retained layer cache 减少重复绘制。",
+    "why.backends.title": "Windows 原生栈",
+    "why.backends.text": "Win32 管理窗口与输入，Direct3D 11 / Direct2D / DirectWrite 负责渲染与文本。",
     "why.cpp.title": "C++ 直写",
-    "why.cpp.text": "无需引入 WebView 或脚本运行时，直接在 C++17 项目里声明界面和状态。",
+    "why.cpp.text": "无需引入 WebView 或脚本运行时，直接在 C++20 项目里声明界面和状态。",
+
     "why.components.title": "组件齐全",
     "why.components.text": "输入、弹层、选择器、表格、图表、Markdown、热区和滚动容器覆盖工具型应用常见场景。",
     "docs.eyebrow": "Documentation",
     "docs.title": "查找架构、组件和集成文档",
-    "docs.lede": "按渲染、输入、组件、平台能力或构建流程快速定位仓库文档。",
+        "docs.lede": "按渲染、输入、组件、平台能力或构建流程快速定位仓库文档。",
     "docs.searchLabel": "搜索",
-    "docs.searchPlaceholder": "搜索 DSL、Vulkan、IME、组件、布局...",
+    "docs.searchPlaceholder": "搜索 DSL、DX11、IME、组件、布局...",
+
     "docs.empty": "没有匹配的文档。",
     "reader.loading": "正在读取文档...",
-    "reader.error": "文档读取失败，请检查本地服务或路径。",
+        "reader.error": "文档读取失败，请检查本地服务或路径。",
     "rendering.eyebrow": "Rendering Core",
-    "rendering.title": "统一 Runtime，双渲染后端",
-    "rendering.lede": "窗口、输入、Runtime 和 GPU 后端各守边界；dirty rect、render cache 和 retained layer cache 已覆盖 OpenGL / Vulkan。",
+    "rendering.title": "统一 Runtime，单一 DX11 渲染后端",
+    "rendering.lede": "窗口、输入、Runtime 和 GPU 后端各守边界；dirty rect、render cache 和 retained layer cache 围绕 Win32 + DX11 路径工作。",
+
     "flow.compose.title": "Compose",
     "flow.compose.text": "C++ DSL 构建 UI 树，Runtime 负责布局、状态同步和交互派发。",
-    "flow.dirty.title": "Dirty Rect",
+        "flow.dirty.title": "Dirty Rect",
     "flow.dirty.text": "按 id 缓存图元和子树能力，变化时合并保守脏区，blur 等依赖内容会升级 full paint。",
-    "flow.backend.title": "Backend",
-    "flow.backend.text": "OpenGL 与 Vulkan 各自管理 pipeline、atlas、texture、render cache、retained layer 和 frame lifecycle。",
+    "flow.backend.title": "DX11 Backend",
+    "flow.backend.text": "Direct3D 11 管理交换链与呈现，Direct2D / DirectWrite 负责 2D 图元与文本布局。",
+
     "components.eyebrow": "Component Layer",
     "components.title": "为工具型界面准备的组件层",
-    "components.lede": "按钮、输入、弹层、选择器、图表、Markdown 和数据表都只组合 DSL 树，不穿透后端 primitive。",
+        "components.lede": "按钮、输入、弹层、选择器、图表、Markdown 和数据表都只组合 DSL 树，不穿透后端 primitive。",
     "start.eyebrow": "Quick Start",
-    "start.title": "把 EUI-NEO 接入你的 CMake 项目",
-    "start.cmake": "CMake 引入",
+    "start.title": "把 EUI-NEO-DX11 接入你的 Windows 工程",
+    "start.cmake": "工程接入",
+
     "start.app": "实现入口",
     "start.build": "构建运行",
     "filter.all": "全部"
@@ -55,9 +61,10 @@ const copy = {
     "nav.docs": "Docs",
     "nav.rendering": "Rendering",
     "nav.components": "Components",
-    "nav.start": "Start",
-    "hero.eyebrow": "C++17 · OpenGL / Vulkan · GLFW / SDL2",
+        "nav.start": "Start",
+    "hero.eyebrow": "C++20 · Direct3D 11 · Win32",
     "hero.title": "EUI-NEO",
+
     "hero.lede": "A lightweight UI framework for high-performance desktop tools, dashboards, and component systems.",
     "hero.docs": "Browse Docs",
     "hero.github": "GitHub",
@@ -69,36 +76,41 @@ const copy = {
     "why.eyebrow": "Why EUI-NEO",
     "why.title": "Keep native C++ apps fast, controllable, and visually modern.",
     "why.performance.title": "On-demand rendering",
-    "why.performance.text": "Idle apps wait for events; animated views advance frames only when needed, while dirty regions, framebuffer cache, and retained layers reduce redraw work.",
-    "why.backends.title": "Backend choice",
-    "why.backends.text": "Use GLFW or SDL2 for windows, OpenGL or Vulkan for rendering, with one shared DSL.",
+        "why.performance.text": "Idle apps wait for events; animated views advance frames only when needed, while dirty regions, framebuffer cache, and retained layers reduce redraw work.",
+    "why.backends.title": "Native Windows stack",
+    "why.backends.text": "Win32 owns windowing and input, while Direct3D 11 / Direct2D / DirectWrite handle rendering and text.",
     "why.cpp.title": "Native C++ workflow",
-    "why.cpp.text": "No WebView or scripting runtime. Declare UI and state directly inside a C++17 project.",
+    "why.cpp.text": "No WebView or scripting runtime. Declare UI and state directly inside a C++20 project.",
+
     "why.components.title": "Practical components",
     "why.components.text": "Inputs, popups, pickers, tables, charts, Markdown, input hot zones, and scroll containers cover common tool-app workflows.",
     "docs.eyebrow": "Documentation",
     "docs.title": "Find architecture, component, and integration notes",
-    "docs.lede": "Search rendering, input, components, platform capabilities, and build workflows directly from the repository docs.",
+        "docs.lede": "Search rendering, input, components, platform capabilities, and build workflows directly from the repository docs.",
     "docs.searchLabel": "Search",
-    "docs.searchPlaceholder": "Search DSL, Vulkan, IME, components, layout...",
+    "docs.searchPlaceholder": "Search DSL, DX11, IME, components, layout...",
+
     "docs.empty": "No matching documents.",
     "reader.loading": "Loading document...",
-    "reader.error": "Could not load this document. Check the local server or path.",
+        "reader.error": "Could not load this document. Check the local server or path.",
     "rendering.eyebrow": "Rendering Core",
-    "rendering.title": "One Runtime, two render backends",
-    "rendering.lede": "Windowing, input, Runtime, and GPU backends stay separated; dirty rects, render cache, and retained layer cache now cover OpenGL and Vulkan.",
+    "rendering.title": "One Runtime, one DX11 backend",
+    "rendering.lede": "Windowing, input, Runtime, and the GPU backend stay separated; dirty rects, render cache, and retained layers are tuned for the Win32 + DX11 path.",
+
     "flow.compose.title": "Compose",
     "flow.compose.text": "The C++ DSL builds the UI tree while Runtime owns layout, state sync, and interaction dispatch.",
-    "flow.dirty.title": "Dirty Rect",
+        "flow.dirty.title": "Dirty Rect",
     "flow.dirty.text": "Primitives and subtree metadata are cached by id; visual changes merge conservative dirty regions, while blur-dependent frames promote to full paint.",
-    "flow.backend.title": "Backend",
-    "flow.backend.text": "OpenGL and Vulkan manage their own pipelines, atlases, textures, render cache, retained layers, and frame lifecycle.",
+    "flow.backend.title": "DX11 Backend",
+    "flow.backend.text": "Direct3D 11 handles swap chain and presentation, while Direct2D / DirectWrite draw 2D primitives and text.",
+
     "components.eyebrow": "Component Layer",
     "components.title": "A component layer for tool-grade interfaces",
-    "components.lede": "Buttons, inputs, popups, pickers, charts, Markdown, and data tables compose DSL trees without touching backend primitives.",
+        "components.lede": "Buttons, inputs, popups, pickers, charts, Markdown, and data tables compose DSL trees without touching backend primitives.",
     "start.eyebrow": "Quick Start",
-    "start.title": "Add EUI-NEO to your CMake project",
-    "start.cmake": "Add CMake",
+    "start.title": "Add EUI-NEO-DX11 to your Windows project",
+    "start.cmake": "Project setup",
+
     "start.app": "Implement app",
     "start.build": "Build and run",
     "filter.all": "All"
@@ -170,26 +182,32 @@ const docs = [
     href: "../docs/渲染后端架构.md",
     zh: {
       title: "渲染后端架构与流程",
-      desc: "GLFW/SDL2、OpenGL/Vulkan、Runtime 边界和渲染流程。"
+            desc: "Win32、DX11 Runtime 边界和渲染流程。"
+
     },
     en: {
       title: "Render Backend Architecture And Pipeline",
-      desc: "Boundaries and pipeline across GLFW/SDL2, OpenGL/Vulkan, and Runtime."
+            desc: "Boundaries and pipeline across Win32, the DX11 backend, and Runtime."
+
     },
-    tags: "opengl vulkan glfw sdl2 backend runtime render dirty rect cache retained layer blur fps"
+        tags: "dx11 win32 backend runtime render dirty rect cache retained layer blur fps"
+
   },
   {
     category: "rendering",
     href: "../docs/retained_layer_cache.md",
     zh: {
       title: "Retained Layer Cache",
-      desc: "稳定静态子树的离屏 layer 缓存，OpenGL / Vulkan 后端资源和限制。"
+            desc: "稳定静态子树的离屏 layer 缓存，以及 DX11 后端资源与限制。"
+
     },
     en: {
       title: "Retained Layer Cache",
-      desc: "Offscreen layer caching for stable static subtrees, with OpenGL / Vulkan backend resources and limits."
+            desc: "Offscreen layer caching for stable static subtrees, with DX11 backend resources and limits."
+
     },
-    tags: "retained layer cache static subtree opengl vulkan framebuffer texture"
+        tags: "retained layer cache static subtree dx11 render target texture"
+
   },
   {
     category: "platform",
@@ -261,13 +279,16 @@ const docs = [
     href: "../docs/集成指南.md",
     zh: {
       title: "集成指南",
-      desc: "公共 facade、静态库、FetchContent 和嵌入式主循环。"
+            desc: "Win32 app 入口、Visual Studio 工程接入和运行方式。"
+
     },
     en: {
       title: "Integration Guide",
-      desc: "Public facade, static library, FetchContent, and embedded loops."
+            desc: "Win32 app entry, Visual Studio project setup, and runtime integration."
+
     },
-    tags: "integration cmake fetchcontent app"
+        tags: "integration win32 visual studio app main"
+
   },
   {
     category: "workflow",

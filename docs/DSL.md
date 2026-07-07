@@ -289,7 +289,8 @@ Text 支持：
 
 `.icon(...)` 会自动使用图标字体；图标字体默认来自 `core/render/text.cpp`，也可以通过配置里的 `.iconFont(...)` 按 app 覆盖。找不到内置图标字体资源时会尝试平台 symbol/icon 字体兜底；但 FontAwesome 图标使用 FontAwesome 自己的 codepoint，系统字体不一定有兼容 glyph，发布包仍建议携带默认 `assets/` 或显式配置 `.iconFont(...)`。
 
-底层文本使用 FreeType 渲染 glyph，启用 HarfBuzz 时会进行复杂文本 shaping。`fontFamily("monospace")` 会选择跨平台等宽字体，`fontFamily("Emoji")` 会选择平台 emoji 字体；如果指定字体或内置 assets 字体加载失败，文本栈会继续尝试默认 UI 字体和系统字体兜底。需要精确光标位置或命中测试时，使用 `core::TextPrimitive::measureTextMetrics(...)` 获取 shaped caret stops；返回的 `byteIndices` 是 UTF-8 byte offset，`caretX` 是对应的逻辑 x，和实际渲染使用同一套 fallback、emoji 缩放和 glyph advance。
+底层文本当前通过 DirectWrite 完成布局、测量与字体回退，并通过 DX11 文本链路渲染。`fontFamily("monospace")` 会选择默认等宽字体别名，`fontFamily("Emoji")` 会选择 Windows emoji 字体；如果指定字体或内置 assets 字体加载失败，文本栈会继续尝试默认 UI 字体和系统字体兜底。需要精确光标位置或命中测试时，使用 `core::TextPrimitive::measureTextMetrics(...)` 获取 caret stops；返回的 `byteIndices` 是 UTF-8 byte offset，`caretX` 是对应的逻辑 x。
+
 
 Text 的 transform 作用在生成后的 glyph 顶点上，适合做滚轮、轻量缩放和旋转动效；默认命中测试仍按未 transform 的布局 frame 计算，需要跟随视觉变换时开启 `.transformedHitTest()`。
 
@@ -388,7 +389,8 @@ Polygon 支持：
 .states(normal, hover, pressed)
 ```
 
-`radius(...)` 会对多边形顶点做圆润过渡，适合 tooltip 指针这类小三角形；命中测试会复用同一套圆角几何。渲染后端为 `Polygon` 使用独立 polygon shader，OpenGL 和 Vulkan 都按多边形边段计算覆盖率抗锯齿，不再借圆角矩形 shader 或 bounding box 填充。
+`radius(...)` 会对多边形顶点做圆润过渡，适合 tooltip 指针这类小三角形；命中测试会复用同一套圆角几何。渲染后端当前为 `Polygon` 使用 DX11 路径下的独立多边形绘制实现，不再借圆角矩形或 bounding box 冒充填充。
+
 
 ## Transform / 2.5D DSL
 
@@ -549,5 +551,7 @@ components::button(ui, "save")
 - 还没有事件冒泡。
 - 已有 click / press / release / pointer move / hover / context menu / text input / scroll / drag 回调；更顺手的手势开发优先用 `components::mouseArea`。
 - 默认 hit-test 按布局矩形计算；开启 `.transformedHitTest()` 后会按元素当前 transform 和父容器继承矩阵反投影命中。
-- 脏区渲染是保守矩形，复杂重叠场景可能扩大重绘区域。Runtime 可以只重绘脏区，Vulkan 可以按 dirty rect 同步 render cache；最终 present 是否也是脏区提交取决于平台窗口系统、图形 API 和驱动能力。
-- 当前优化是 Runtime 级遍历、framebuffer cache、dirty rect 和自动 retained layer cache 的组合；OpenGL/Vulkan 后端都提供 retained layer 资源。它不是完整 retained scene graph，复杂 blur、动态 image/svg、交互和动画子树仍会走普通 dirty repaint。
+- 脏区渲染是保守矩形，复杂重叠场景可能扩大重绘区域。Runtime 可以只重绘脏区；最终 present 是否也是脏区提交取决于平台窗口系统、图形 API 和驱动能力。
+
+- 当前优化是 Runtime 级遍历、framebuffer cache、dirty rect 和自动 retained layer cache 的组合；复杂 blur、动态 image/svg、交互和动画子树仍会走普通 dirty repaint。
+

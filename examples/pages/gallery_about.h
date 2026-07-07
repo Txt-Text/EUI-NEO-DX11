@@ -1,21 +1,12 @@
 struct GalleryAboutPage {
     const char* windowBackendName() {
-    #if defined(EUI_WINDOW_BACKEND_SDL2)
-        return "SDL2";
-    #else
-        return "GLFW";
-    #endif
+        return "Win32";
     }
 
     const char* renderBackendName() {
-    #if defined(EUI_RENDER_BACKEND_VULKAN)
-        return "Vulkan";
-    #elif defined(EUI_RENDER_BACKEND_OPENGL)
-        return "OpenGL";
-    #else
-        return "Unknown";
-    #endif
+        return "DX11";
     }
+
 
     void compose(eui::Ui& ui, float width, float height) {
     const float contentWidth = std::max(280.0f, std::min(width, 860.0f));
@@ -73,7 +64,8 @@ struct GalleryAboutPage {
                         .x(infoX)
                         .y(infoY)
                         .size(infoWidth, 36.0f)
-                        .text("EUI Neo")
+                                                .text("EUI Neo DX11")
+
                         .fontSize(32.0f)
                         .lineHeight(36.0f)
                         .color(textPrimary())
@@ -84,7 +76,8 @@ struct GalleryAboutPage {
                         .x(infoX)
                         .y(infoY + 42.0f)
                         .size(infoWidth, compact ? 58.0f : 58.0f)
-                        .text("A lightweight C++ UI playground for themed controls, motion and image rendering.")
+                                                .text("A Windows-native C++20 UI playground built on Win32 and Direct3D 11.")
+
                         .fontSize(17.0f)
                         .lineHeight(24.0f)
                         .maxWidth(infoWidth)

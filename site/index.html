@@ -33,7 +33,8 @@
       <section class="hero">
         <div class="hero-layout">
           <div class="hero-copy">
-            <p class="eyebrow" data-i18n="hero.eyebrow">C++17 · OpenGL / Vulkan · GLFW / SDL2</p>
+                        <p class="eyebrow" data-i18n="hero.eyebrow">C++20 · Direct3D 11 · Win32</p>
+
             <h1 data-i18n="hero.title">EUI-NEO</h1>
             <p class="hero-lede" data-i18n="hero.lede">一个面向高性能桌面工具、仪表盘和组件系统的轻量级 UI 框架。</p>
             <div class="hero-actions">
@@ -59,12 +60,14 @@
         </div>
         <div class="hero-stats" aria-label="Highlights">
           <div>
-            <strong>2</strong>
+                        <strong>1</strong>
             <span data-i18n="stats.window">窗口后端</span>
+
           </div>
           <div>
-            <strong>2</strong>
+                        <strong>1</strong>
             <span data-i18n="stats.render">渲染后端</span>
+
           </div>
           <div>
             <strong>20+</strong>
@@ -88,13 +91,15 @@
           </div>
           <div class="why-item">
             <span>02</span>
-            <h3 data-i18n="why.backends.title">后端可选</h3>
-            <p data-i18n="why.backends.text">GLFW / SDL2 窗口后端，OpenGL / Vulkan 渲染后端，同一套 DSL 输出。</p>
+                        <h3 data-i18n="why.backends.title">Windows 原生栈</h3>
+            <p data-i18n="why.backends.text">Win32 管理窗口与输入，Direct3D 11 / Direct2D / DirectWrite 负责渲染与文本。</p>
+
           </div>
           <div class="why-item">
             <span>03</span>
             <h3 data-i18n="why.cpp.title">C++ 直写</h3>
-            <p data-i18n="why.cpp.text">无需引入 WebView 或脚本运行时，直接在 C++17 项目里声明界面和状态。</p>
+                        <p data-i18n="why.cpp.text">无需引入 WebView 或脚本运行时，直接在 C++20 项目里声明界面和状态。</p>
+
           </div>
           <div class="why-item">
             <span>04</span>
@@ -116,7 +121,8 @@
         <div class="search-panel">
           <label class="search-box">
             <span data-i18n="docs.searchLabel">搜索</span>
-            <input id="docSearch" type="search" autocomplete="off" data-i18n-placeholder="docs.searchPlaceholder" placeholder="搜索 DSL、Vulkan、IME、组件、布局...">
+                        <input id="docSearch" type="search" autocomplete="off" data-i18n-placeholder="docs.searchPlaceholder" placeholder="搜索 DSL、DX11、IME、组件、布局...">
+
           </label>
           <div class="filters" id="docFilters" aria-label="Document filters"></div>
         </div>
@@ -128,9 +134,10 @@
           <div>
             <span class="section-index">03 / RENDER</span>
             <p class="eyebrow" data-i18n="rendering.eyebrow">Rendering Core</p>
-            <h2 data-i18n="rendering.title">统一 Runtime，双渲染后端</h2>
+                        <h2 data-i18n="rendering.title">统一 Runtime，单一 DX11 渲染后端</h2>
           </div>
-          <p data-i18n="rendering.lede">窗口、输入、Runtime 和 GPU 后端各守边界，让同一套 DSL 输出到 OpenGL 或 Vulkan。</p>
+          <p data-i18n="rendering.lede">窗口、输入、Runtime 和 GPU 后端各守边界，让同一套 DSL 稳定落到 Win32 + Direct3D 11 渲染链路。</p>
+
         </div>
         <div class="render-flow">
           <div class="flow-item">
@@ -145,8 +152,9 @@
           </div>
           <div class="flow-item">
             <span>03</span>
-            <h3 data-i18n="flow.backend.title">Backend</h3>
-            <p data-i18n="flow.backend.text">OpenGL 与 Vulkan 各自管理 pipeline、atlas、texture 和 frame lifecycle。</p>
+                        <h3 data-i18n="flow.backend.title">DX11 Backend</h3>
+            <p data-i18n="flow.backend.text">Direct3D 11 管理交换链与呈现，Direct2D / DirectWrite 负责 2D 图元与文本布局。</p>
+
           </div>
         </div>
       </section>
@@ -170,19 +178,21 @@
         <div class="section-heading">
           <span class="section-index">05 / BUILD</span>
           <p class="eyebrow" data-i18n="start.eyebrow">Quick Start</p>
-          <h2 data-i18n="start.title">把 EUI-NEO 接入你的 CMake 项目</h2>
+                    <h2 data-i18n="start.title">把 EUI-NEO-DX11 接入你的 Windows 工程</h2>
+
         </div>
         <div class="code-grid">
           <article class="code-step">
             <span>01</span>
-            <h3 data-i18n="start.cmake">CMake 引入</h3>
-            <pre><code>add_subdirectory(external/EUI-NEO)
-
-add_executable(my_app
-    external/EUI-NEO/core/app/glfw_app_main.cpp
+                        <h3 data-i18n="start.cmake">工程接入</h3>
+            <pre><code>add_executable(my_app
+    external/EUI-NEO-DX11/core/app/win32_app_main.cpp
     app.cpp
 )
-eui_neo_configure_app(my_app)</code></pre>
+
+# Link the framework sources or project target
+# and keep assets available next to the executable</code></pre>
+
           </article>
           <article class="code-step">
             <span>02</span>
@@ -197,10 +207,11 @@ void compose(eui::Ui& ui, const eui::Screen& screen);
           </article>
           <article class="code-step">
             <span>03</span>
-            <h3 data-i18n="start.build">构建运行</h3>
-            <pre><code>cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-./build/my_app</code></pre>
+                        <h3 data-i18n="start.build">构建运行</h3>
+            <pre><code>msbuild .\EUI-NEO-DX11.vcxproj \
+  /p:Configuration=Release \
+  /p:Platform=x64</code></pre>
+
           </article>
         </div>
       </section>
