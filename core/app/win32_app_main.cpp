@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <memory>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "imm32.lib")
@@ -28,7 +29,13 @@ namespace {
 struct WindowState : app::AppRunner {
     bool running = true;
     bool minimized = false;
+    bool interactiveResize = false;
+    wchar_t pendingHighSurrogate = 0;
+    app::MainWindowRuntime* runtime = nullptr;
+    core::render::RenderBackend* renderBackend = nullptr;
 };
+
+
 
 struct TimerResolutionGuard {
     TimerResolutionGuard() {
@@ -76,6 +83,25 @@ bool mapVirtualKey(WPARAM key, core::InputKey& mapped) {
     }
 }
 
+bool isHighSurrogate(wchar_t value) {
+    return value >= 0xD800 && value <= 0xDBFF;
+}
+
+bool isLowSurrogate(wchar_t value) {
+    return value >= 0xDC00 && value <= 0xDFFF;
+}
+
+void queueUtf16Text(HWND hwnd, const wchar_t* text, int length) {
+    if (text == nullptr || length <= 0) {
+        return;
+    }
+    char utf8[8] = {};
+    const int utf8Length = WideCharToMultiByte(CP_UTF8, 0, text, length, utf8, static_cast<int>(sizeof(utf8)), nullptr, nullptr);
+    if (utf8Length > 0) {
+        core::queueTextInput(hwnd, std::string(utf8, utf8 + utf8Length));
+    }
+}
+
 void queueCompositionText(HWND hwnd) {
     HIMC context = ImmGetContext(hwnd);
     if (context == nullptr) {
@@ -99,6 +125,28 @@ void queueCompositionText(HWND hwnd) {
     ImmReleaseContext(hwnd, context);
 }
 
+void renderWindowNow(HWND hwnd, WindowState& state) {
+    if (state.runtime == nullptr || state.renderBackend == nullptr || state.minimized || !state.running) {
+        return;
+    }
+
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    const int framebufferWidth = std::max(1L, client.right - client.left);
+    const int framebufferHeight = std::max(1L, client.bottom - client.top);
+    const float dpiScale = dpiScaleForWindow(hwnd);
+    const float pointerScale = pointerScaleForWindow(hwnd);
+
+    state.runtime->updateAndRender(
+        hwnd,
+        *state.renderBackend,
+        {framebufferWidth, framebufferHeight, dpiScale, pointerScale},
+        0.0f,
+        true,
+        true,
+        [] {});
+}
+
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     WindowState* state = reinterpret_cast<WindowState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
 
@@ -114,14 +162,20 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
-    case WM_SIZE:
+        case WM_SIZE:
         if (state) {
             state->minimized = wParam == SIZE_MINIMIZED;
             state->paintRequested = true;
+            state->requestImmediateFrame();
+            state->resetTiming(core::window::timeSeconds());
             app::detail::requestFullPaint();
+            if (!state->minimized) {
+                renderWindowNow(hwnd, *state);
+            }
         }
         return 0;
-    case WM_DPICHANGED:
+
+        case WM_DPICHANGED:
         if (state) {
             const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
             if (suggested != nullptr) {
@@ -134,27 +188,62 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
             state->paintRequested = true;
+            state->requestImmediateFrame();
+            state->resetTiming(core::window::timeSeconds());
+            app::detail::requestFullPaint();
+            renderWindowNow(hwnd, *state);
+        }
+        return 0;
+
+        case WM_ENTERSIZEMOVE:
+        if (state) {
+            state->interactiveResize = true;
+            state->paintRequested = true;
+            state->requestImmediateFrame();
+            state->resetTiming(core::window::timeSeconds());
+        }
+        return 0;
+    case WM_EXITSIZEMOVE:
+        if (state) {
+            state->interactiveResize = false;
+            state->paintRequested = true;
+            state->requestImmediateFrame();
+            state->resetTiming(core::window::timeSeconds());
             app::detail::requestFullPaint();
         }
         return 0;
     case WM_MOUSEWHEEL:
+
         core::queueScrollInput(hwnd, 0.0, static_cast<double>(GET_WHEEL_DELTA_WPARAM(wParam)) / static_cast<double>(WHEEL_DELTA));
         if (state) {
             state->paintRequested = true;
         }
         return 0;
-    case WM_CHAR: {
-        wchar_t wide[2] = {static_cast<wchar_t>(wParam), 0};
-        char utf8[8] = {};
-        const int length = WideCharToMultiByte(CP_UTF8, 0, wide, 1, utf8, static_cast<int>(sizeof(utf8)), nullptr, nullptr);
-        if (length > 0) {
-            core::queueTextInput(hwnd, std::string(utf8, utf8 + length));
-            if (state) {
-                state->paintRequested = true;
-            }
+        case WM_CHAR: {
+        if (state == nullptr) {
+            return 0;
         }
+
+        const wchar_t value = static_cast<wchar_t>(wParam);
+        if (isHighSurrogate(value)) {
+            state->pendingHighSurrogate = value;
+            return 0;
+        }
+
+        if (isLowSurrogate(value) && state->pendingHighSurrogate != 0) {
+            const wchar_t pair[2] = {state->pendingHighSurrogate, value};
+            state->pendingHighSurrogate = 0;
+            queueUtf16Text(hwnd, pair, 2);
+            state->paintRequested = true;
+            return 0;
+        }
+
+        state->pendingHighSurrogate = 0;
+        queueUtf16Text(hwnd, &value, 1);
+        state->paintRequested = true;
         return 0;
     }
+
     case WM_IME_STARTCOMPOSITION:
     case WM_IME_COMPOSITION:
         queueCompositionText(hwnd);
@@ -217,6 +306,7 @@ int eui_win32_entry() {
         core::window::destroyWindow(window);
         return -1;
     }
+    state.renderBackend = renderBackend.get();
 
     if (!app::initialize(window)) {
         app::shutdown();
@@ -226,6 +316,7 @@ int eui_win32_entry() {
     }
 
     app::MainWindowRuntime mainWindowRuntime(state);
+    state.runtime = &mainWindowRuntime;
     state.resetTiming(core::window::timeSeconds());
     state.updateFrameInterval(60.0, state.lastTitleUpdate, true);
 
@@ -256,12 +347,12 @@ int eui_win32_entry() {
         const float dpiScale = dpiScaleForWindow(window);
         const float pointerScale = pointerScaleForWindow(window);
 
-        mainWindowRuntime.runFrame(
+                mainWindowRuntime.runFrame(
             window,
             *renderBackend,
             {framebufferWidth, framebufferHeight, dpiScale, pointerScale},
             core::window::timeSeconds(),
-            60.0,
+            state.interactiveResize ? 240.0 : 60.0,
             true,
             [] {},
             [&](float, bool) {},
@@ -285,6 +376,8 @@ int eui_win32_entry() {
         app::shutdown();
     }
     renderBackend.reset();
+    state.renderBackend = nullptr;
+    state.runtime = nullptr;
     core::window::destroyWindow(window);
     return 0;
 }

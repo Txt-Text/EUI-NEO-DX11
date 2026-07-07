@@ -83,6 +83,7 @@
     <ClInclude Include="core\platform\platform.h" />
     <ClInclude Include="core\platform\tray_bridge.h" />
     <ClInclude Include="core\render\dx11\dx11_backend.h" />
+    <ClInclude Include="core\render\dx11\dx11_external_context.h" />
     <ClInclude Include="core\render\image.h" />
     <ClInclude Include="core\render\image_source.h" />
     <ClInclude Include="core\render\image_types.h" />
@@ -112,6 +113,7 @@
     <ClInclude Include="include\eui\detail\dsl_app_impl.h" />
     <ClInclude Include="include\eui\dsl.h" />
     <ClInclude Include="include\eui\dsl_app.h" />
+    <ClInclude Include="include\eui\dx11.h" />
     <ClInclude Include="include\eui\image.h" />
     <ClInclude Include="include\eui\network.h" />
     <ClInclude Include="include\eui\platform.h" />
@@ -137,6 +139,7 @@
     <ClCompile Include="core\platform\platform.cpp" />
     <ClCompile Include="core\platform\tray_bridge.c" />
     <ClCompile Include="core\render\dx11\dx11_backend.cpp" />
+    <ClCompile Include="core\render\dx11\dx11_external_context.cpp" />
     <ClCompile Include="core\render\image.cpp" />
     <ClCompile Include="core\render\image_facade.cpp" />
     <ClCompile Include="core\render\image_source.cpp" />
@@ -199,10 +202,10 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\.Programs\C++\EUI-NEO-DX11;D:\.Programs\C++\EUI-NEO-DX11\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>D:\.Programs\C++\EUI-NEO-DX11;D:\.Programs\C++\EUI-NEO-DX11\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir);$(ProjectDir)include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -215,7 +218,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Imm32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Imm32.lib;Urlmon.lib;Pdh.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -234,7 +237,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>Imm32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Imm32.lib;Urlmon.lib;Pdh.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>

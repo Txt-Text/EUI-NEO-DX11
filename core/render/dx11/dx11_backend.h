@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/render/dx11/dx11_external_context.h"
 #include "core/render/render_backend.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -41,19 +42,44 @@ public:
     void drawRoundedRect(const RoundedRectDrawCommand& command, int windowWidth, int windowHeight) override;
     void drawPolygon(const PolygonDrawCommand& command, int windowWidth, int windowHeight) override;
     void drawText(const TextDrawCommand& command, int windowWidth, int windowHeight) override;
+    TextureHandle createTexture(const unsigned char* pixels, int width, int height) override;
+    bool updateTexture(TextureHandle handle, const unsigned char* pixels, int width, int height) override;
+    void destroyTexture(TextureHandle handle) override;
+    void drawTexture(TextureHandle handle,
+                     const float* vertices,
+                     std::size_t vertexFloatCount,
+                     const core::Color& tint,
+                     const core::Rect& rect,
+                     float radius,
+                     int windowWidth,
+                     int windowHeight) override;
 
 private:
+    struct TextureResource;
+
+    bool initializeOwnedResources();
+    bool initializeExternalResources(const ExternalDx11Context& context);
+    bool refreshExternalResources();
+    bool applyExternalContext(const ExternalDx11Context& context, bool initializeState);
+    void saveFrameDrawingState();
+    void restoreFrameDrawingState();
     bool createDeviceResources();
     bool createWindowSizeDependentResources(int width, int height);
     void releaseWindowSizeDependentResources();
     D2D1_COLOR_F toD2DColor(const core::Color& color, float opacityScale = 1.0f) const;
     void fillGeometryWithColor(ID2D1Geometry* geometry, const core::Color& color, float opacity);
     void strokeGeometryWithColor(ID2D1Geometry* geometry, const core::Color& color, float width, float opacity);
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> createBitmapFromRgba(const unsigned char* pixels, int width, int height) const;
 
     HWND hwnd_ = nullptr;
     int currentWidth_ = 0;
     int currentHeight_ = 0;
     bool valid_ = false;
+    bool usingExternalContext_ = false;
+    bool frameDrawingStateSaved_ = false;
+    bool hostManagesPresent_ = false;
+    bool hostManagesResize_ = false;
+    bool hostManagesBeginEndDraw_ = false;
     bool renderCacheRecreated_ = false;
     bool clipActive_ = false;
 
@@ -67,6 +93,7 @@ private:
     Microsoft::WRL::ComPtr<ID2D1Factory1> d2dFactory_;
     Microsoft::WRL::ComPtr<ID2D1Device> d2dDevice_;
     Microsoft::WRL::ComPtr<ID2D1DeviceContext> d2dContext_;
+    Microsoft::WRL::ComPtr<ID2D1DrawingStateBlock1> drawingStateBlock_;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2dTargetBitmap_;
     Microsoft::WRL::ComPtr<IDWriteFactory> dwriteFactory_;
 };

@@ -100,15 +100,19 @@ x64/Release/
 - 这个 fork 依赖 Windows 原生图形 API，不提供其他渲染后端。
 - 文本渲染通过 DirectWrite 完成。
 - UI 组合和运行时行为仍然基于 EUI DSL 与组件系统，但底层图形路径是 Windows + DX11 专用实现。
+- 当前 DX11 路径优先保证直接绘制正确性。Runtime 侧仍保留 render cache 与 retained layer 接口，但后端目前会回退到 direct drawing，而不是维护离屏缓存资源。
+- 当宿主程序已经拥有 D3D11 / D2D / DWrite 管线时，可以通过 `eui/dx11.h` 注册外部上下文，让 EUI 复用宿主图形资源。该接入路径当前属于实验性能力，主要面向高级宿主集成场景。
 - `assets/` 下的资源属于运行时的一部分，打包时应确保它们与可执行文件保持可用关系。
 
 ## 入口与后端
 
-这个 fork 的应用入口在 [`core/app/win32_app_main.cpp`](core/app/win32_app_main.cpp)。渲染后端通过 [`core/render/render_backend.cpp`](core/render/render_backend.cpp) 固定解析到 DX11，具体实现位于 [`core/render/dx11/`](core/render/dx11)。
+这个 fork 的应用入口在 [`core/app/win32_app_main.cpp`](core/app/win32_app_main.cpp)。渲染后端通过 [`core/render/render_backend.cpp`](core/render/render_backend.cpp) 固定解析到 DX11，具体实现位于 [`core/render/dx11/`](core/render/dx11)。外部上下文接管方式见 [`docs/external_dx11_context.md`](docs/external_dx11_context.md)。
 
 ## 状态说明
 
 这个仓库应被视为一个独立演进的 Windows 定向 fork。部分历史文件和文档可能仍然保留上游跨平台时期的描述；当文档和当前实现不一致时，以本 fork 的实际代码为准。
+
+外部 DX11 上下文接管当前属于实验性能力，定位是高级宿主集成接口，而不是对任意第三方渲染循环的通用兼容承诺。
 
 ## 许可
 

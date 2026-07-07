@@ -56,6 +56,7 @@ struct AppRunner {
     int renderCacheFrames = 0;
     int renderCacheRecreatedFrames = 0;
     bool renderedSinceLastClock = false;
+    bool immediateFrameRequested = false;
     core::platform::ProcessUsageSampler usageSampler;
 
     void resetTiming(double now) {
@@ -103,6 +104,16 @@ struct AppRunner {
 
     bool consumeFrameRequest() {
         return core::platform::consumeFrameRequest();
+    }
+
+    void requestImmediateFrame() {
+        immediateFrameRequested = true;
+    }
+
+    bool consumeImmediateFrameRequest() {
+        const bool requested = immediateFrameRequested;
+        immediateFrameRequested = false;
+        return requested;
     }
 
     bool anyAnimating(bool childAnimating) const {

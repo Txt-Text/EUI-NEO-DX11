@@ -100,15 +100,19 @@ x64/Release/
 - This fork expects Windows-native graphics APIs and does not provide alternate rendering backends.
 - Text rendering is handled through DirectWrite.
 - UI composition and runtime behavior remain centered on the EUI DSL and component system, but the graphics path is specific to DX11 on Windows.
+- The current DX11 path prioritizes direct rendering correctness. Runtime-side render cache and retained layer interfaces are present, but the backend currently falls back to direct drawing instead of maintaining offscreen cache resources.
+- The DX11 backend can optionally adopt an external D3D11 / D2D / DWrite context through `eui/dx11.h` when a host application already owns the graphics pipeline. This is currently an experimental integration path intended for advanced host applications.
 - Assets under `assets/` are part of the runtime and should remain available next to the built executable when the app is packaged.
 
 ## Entry Point
 
-The application entry path for this fork is the Win32 app bootstrap under [`core/app/win32_app_main.cpp`](core/app/win32_app_main.cpp). The render backend resolves to DX11 through [`core/render/render_backend.cpp`](core/render/render_backend.cpp) and the implementation under [`core/render/dx11/`](core/render/dx11).
+The application entry path for this fork is the Win32 app bootstrap under [`core/app/win32_app_main.cpp`](core/app/win32_app_main.cpp). The render backend resolves to DX11 through [`core/render/render_backend.cpp`](core/render/render_backend.cpp) and the implementation under [`core/render/dx11/`](core/render/dx11). External-context adoption is documented in [`docs/external_dx11_context.md`](docs/external_dx11_context.md).
 
 ## Status
 
 This repository should be treated as a Windows-focused fork with its own engineering direction. Some files and documents inherited from upstream may still reference older cross-platform backends; when that conflicts with the actual code, the code in this fork is authoritative.
+
+The external DX11-context adoption path is currently experimental. It is meant for advanced host integration, not yet a general compatibility guarantee for arbitrary third-party render loops.
 
 ## License
 

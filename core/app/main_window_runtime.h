@@ -49,7 +49,8 @@ public:
             frameWakeRequested ||
             runner_.anyAnimating(childAnimating()) ||
             core::hasPendingPointerInput(window, metrics.pointerScale);
-        while (frameRequested) {
+        const bool immediateFrameRequested = runner_.consumeImmediateFrameRequest();
+        while (frameRequested && !immediateFrameRequested) {
             const double remaining = runner_.nextFrameTime - core::window::timeSeconds();
             if (remaining <= 0.0) {
                 break;
