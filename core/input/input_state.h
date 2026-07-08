@@ -246,12 +246,29 @@ inline bool hasPendingPointerInput(window::Handle window, float dpiScale = 1.0f)
            core::window::isMouseButtonDown(window, 1) != state.lastRightDown;
 }
 
-inline void releaseInputQueue(window::Handle window) {
+inline void syncPointerState(window::Handle window, float dpiScale = 1.0f) {
+    detail::PointerState& state = detail::pointerState(window);
+
+    double x = 0.0;
+    double y = 0.0;
+    core::window::getCursorPosition(window, x, y);
+    x *= dpiScale;
+    y *= dpiScale;
+
+    state.lastX = x;
+    state.lastY = y;
+    state.lastDown = core::window::isMouseButtonDown(window, 0);
+    state.lastRightDown = core::window::isMouseButtonDown(window, 1);
+}
+
+
+    inline void releaseInputQueue(window::Handle window) {
     detail::inputQueues().erase(window);
     detail::pointerStates().erase(window);
     detail::composingStates().erase(window);
     detail::compositionTextStates().erase(window);
 }
+
 
 inline PointerEvent readPointerEvent(window::Handle window, float dpiScale = 1.0f) {
     detail::PointerState& state = detail::pointerState(window);

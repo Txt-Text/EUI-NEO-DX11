@@ -55,19 +55,12 @@ inline bool Runtime::update(core::window::Handle window, float deltaSeconds, flo
     KeyboardEvent keyboardEvent = inputEvents.first;
     ScrollEvent scrollEvent = inputEvents.second;
     if (!inputEnabled) {
-        event.x = -1000000.0;
-        event.y = -1000000.0;
-        event.deltaX = 0.0;
-        event.deltaY = 0.0;
-        event.down = false;
-        event.pressedThisFrame = false;
-        event.releasedThisFrame = true;
-        event.rightDown = false;
-        event.rightPressedThisFrame = false;
-        event.rightReleasedThisFrame = false;
+        event = {};
         keyboardEvent = {};
         scrollEvent = {};
+        cancelPointerInteractions();
     }
+
     animating_ = false;
     composeRequested_ = false;
     wantsHandCursor_ = false;
@@ -131,7 +124,27 @@ inline void Runtime::requestFullPaint() {
     paintRequested_ = true;
 }
 
+inline void Runtime::cancelPointerInteractions() {
+    bool changed = false;
+    for (auto& item : interactions_) {
+        runtime::InteractionInstance& instance = item.second;
+        changed = changed ||
+                  instance.state.hover ||
+                  instance.state.pressed ||
+                  instance.state.clicked ||
+                  instance.state.pressStarted ||
+                  instance.state.released ||
+                  instance.state.drag ||
+                  instance.state.active;
+        instance.state = {};
+    }
+    hoverTargetCacheValid_ = false;
+    wantsHandCursor_ = false;
+    paintRequested_ = paintRequested_ || changed;
+}
+
 inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, const Color& clearColor) {
+
     core::render::RenderBackend* renderBackend = core::render::activeRenderBackend();
     if (renderBackend == nullptr) {
         return;

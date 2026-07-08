@@ -26,6 +26,16 @@ enum class FileDialogStatus {
     Failed
 };
 
+enum class WindowSystemMenuCommand {
+    None = 0,
+    Restore,
+    Move,
+    Size,
+    Minimize,
+    Maximize,
+    Close
+};
+
 struct FileDialogResult {
     FileDialogStatus status = FileDialogStatus::Cancelled;
     std::vector<std::string> paths;
@@ -48,7 +58,18 @@ bool consumeTrayShowRequested();
 bool consumeTrayExitRequested();
 void shutdownTray();
 void setImeCursorRect(window::Handle window, float x, float y, float width, float height);
+void beginWindowDrag(window::Handle window);
+void closeWindow(window::Handle window);
+void minimizeWindow(window::Handle window);
+void maximizeWindow(window::Handle window);
+void restoreWindow(window::Handle window);
+bool isWindowMaximized(window::Handle window);
+void setWindowTopmost(window::Handle window, bool topmost);
+bool isWindowTopmost(window::Handle window);
+WindowSystemMenuCommand showWindowSystemMenu(window::Handle window, int screenX, int screenY);
+std::string windowIconDataUri(window::Handle window);
 void requestFrame();
+
 void requestUiUpdate();
 bool consumeUiUpdate();
 bool consumeFrameRequest();

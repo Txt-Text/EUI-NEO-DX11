@@ -663,11 +663,22 @@ void Dx11Backend::drawText(const TextDrawCommand& command, int windowWidth, int 
         return;
     }
 
-    if (command.lineHeight > 0.0f) {
+        if (command.lineHeight > 0.0f) {
+        DWRITE_LINE_METRICS lineMetrics{};
+        UINT32 actualLineCount = 0;
+        const HRESULT metricsResult = layout->GetLineMetrics(&lineMetrics, 1, &actualLineCount);
+        const float defaultLineHeight = (SUCCEEDED(metricsResult) && actualLineCount > 0 && lineMetrics.height > 0.0f)
+            ? lineMetrics.height
+            : command.fontSize;
+        const float defaultBaseline = (SUCCEEDED(metricsResult) && actualLineCount > 0 && lineMetrics.baseline > 0.0f)
+            ? lineMetrics.baseline
+            : command.fontSize * 0.8f;
+        const float baseline = defaultBaseline + (command.lineHeight - defaultLineHeight) * 0.5f;
         layout->SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM,
                                command.lineHeight,
-                               command.fontSize * 0.8f);
+                               std::clamp(baseline, 0.0f, command.lineHeight));
     }
+
 
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(d2dContext_->CreateSolidColorBrush(toD2DColor(command.color), &brush))) {
@@ -734,8 +745,6 @@ void Dx11Backend::drawTexture(TextureHandle handle,
                               int windowWidth,
                               int windowHeight) {
     (void)vertexFloatCount;
-    (void)rect;
-    (void)radius;
     (void)windowWidth;
     (void)windowHeight;
 
@@ -744,36 +753,42 @@ void Dx11Backend::drawTexture(TextureHandle handle,
         return;
     }
 
-    Microsoft::WRL::ComPtr<ID2D1BitmapBrush1> brush;
-    if (FAILED(d2dContext_->CreateBitmapBrush(texture->bitmap.Get(), &brush)) || brush == nullptr) {
-        return;
-    }
-    brush->SetExtendModeX(D2D1_EXTEND_MODE_CLAMP);
-    brush->SetExtendModeY(D2D1_EXTEND_MODE_CLAMP);
-    brush->SetInterpolationMode(D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
-    brush->SetOpacity(std::clamp(tint.a, 0.0f, 1.0f));
-    brush->SetTransform(textureTransformFromVertices(vertices));
+    const D2D1_RECT_F destRect = D2D1::RectF(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
+    const float u0 = vertices[5];
+    const float v0 = vertices[6];
+    const float u1 = vertices[19];
+    const float v1 = vertices[20];
+    const D2D1_RECT_F sourceRect = D2D1::RectF(
+        std::clamp(u0, 0.0f, 1.0f) * texture->width,
+        std::clamp(v0, 0.0f, 1.0f) * texture->height,
+        std::clamp(u1, 0.0f, 1.0f) * texture->width,
+        std::clamp(v1, 0.0f, 1.0f) * texture->height);
 
-    Microsoft::WRL::ComPtr<ID2D1PathGeometry> geometry;
-    if (FAILED(d2dFactory_->CreatePathGeometry(&geometry)) || geometry == nullptr) {
-        return;
-    }
-    Microsoft::WRL::ComPtr<ID2D1GeometrySink> sink;
-    if (FAILED(geometry->Open(&sink)) || sink == nullptr) {
+    const float opacity = std::clamp(tint.a, 0.0f, 1.0f);
+    if (radius > 0.0f) {
+        Microsoft::WRL::ComPtr<ID2D1BitmapBrush1> brush;
+        if (FAILED(d2dContext_->CreateBitmapBrush(texture->bitmap.Get(), &brush)) || brush == nullptr) {
+            return;
+        }
+        brush->SetExtendModeX(D2D1_EXTEND_MODE_CLAMP);
+        brush->SetExtendModeY(D2D1_EXTEND_MODE_CLAMP);
+        brush->SetInterpolationMode(D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        brush->SetOpacity(opacity);
+        brush->SetTransform(D2D1::Matrix3x2F::Translation(rect.x - sourceRect.left, rect.y - sourceRect.top));
+
+        const float clampedRadius = std::clamp(radius, 0.0f, std::min(rect.width, rect.height) * 0.5f);
+        const D2D1_ROUNDED_RECT roundedRect = D2D1::RoundedRect(destRect, clampedRadius, clampedRadius);
+        d2dContext_->FillRoundedRectangle(roundedRect, brush.Get());
         return;
     }
 
-    sink->BeginFigure(D2D1::Point2F(vertices[0], vertices[1]), D2D1_FIGURE_BEGIN_FILLED);
-    sink->AddLine(D2D1::Point2F(vertices[7], vertices[8]));
-    sink->AddLine(D2D1::Point2F(vertices[14], vertices[15]));
-    sink->AddLine(D2D1::Point2F(vertices[35], vertices[36]));
-    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-    if (FAILED(sink->Close())) {
-        return;
-    }
-
-    d2dContext_->FillGeometry(geometry.Get(), brush.Get());
+    d2dContext_->DrawBitmap(texture->bitmap.Get(),
+                            destRect,
+                            opacity,
+                            D2D1_INTERPOLATION_MODE_LINEAR,
+                            sourceRect);
 }
+
 
 bool Dx11Backend::createDeviceResources() {
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;

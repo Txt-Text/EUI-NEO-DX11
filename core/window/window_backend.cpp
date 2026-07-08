@@ -10,6 +10,8 @@
 #endif
 #include <windows.h>
 #include <imm.h>
+#include <dwmapi.h>
+
 
 #include <algorithm>
 #include <cstring>
@@ -17,12 +19,17 @@
 #include <unordered_map>
 #include <vector>
 
+#pragma comment(lib, "dwmapi.lib")
+
 
 namespace core::window {
+
 
 namespace {
 
 constexpr const wchar_t* kWindowClassName = L"EUI_NEO_DX11_WINDOW";
+constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+
 
 std::vector<HWND>& windows() {
     static std::vector<HWND> handles;
@@ -141,9 +148,11 @@ Handle createWindow(const WindowCreateRequest& request) {
         nullptr,
         GetModuleHandleW(nullptr),
         nullptr);
-    if (hwnd != nullptr) {
+        if (hwnd != nullptr) {
         windows().push_back(hwnd);
+        refreshWindowTheme(hwnd);
     }
+
     return hwnd;
 }
 
@@ -264,11 +273,35 @@ void setCursor(Handle, CursorHandle cursor) {
 
 void destroyCursor(CursorHandle) {}
 
+bool systemUsesDarkMode() {
+    DWORD value = 1;
+    DWORD size = sizeof(value);
+    const LSTATUS status = RegGetValueW(HKEY_CURRENT_USER,
+                                        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                                        L"AppsUseLightTheme",
+                                        RRF_RT_REG_DWORD,
+                                        nullptr,
+                                        &value,
+                                        &size);
+    return status == ERROR_SUCCESS ? value == 0 : false;
+}
+
+void refreshWindowTheme(Handle window) {
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+
+    const BOOL dark = systemUsesDarkMode() ? TRUE : FALSE;
+    DwmSetWindowAttribute(hwnd, kDwmUseImmersiveDarkMode, &dark, sizeof(dark));
+}
+
 void setWindowIcon(Handle window, int width, int height, unsigned char* pixels) {
     HWND hwnd = static_cast<HWND>(window);
     if (hwnd == nullptr || pixels == nullptr || width <= 0 || height <= 0) {
         return;
     }
+
 
     BITMAPV5HEADER bitmapHeader{};
     bitmapHeader.bV5Size = sizeof(bitmapHeader);
@@ -335,8 +368,43 @@ void setWindowIcon(Handle window, int width, int height, unsigned char* pixels) 
     eui_set_application_icon_rgba(width, height, pixels);
 }
 
+void setWindowCustomTitleBar(Handle window, bool enabled) {
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    if (enabled) {
+        style &= ~static_cast<LONG_PTR>(WS_CAPTION);
+    } else {
+        style |= static_cast<LONG_PTR>(WS_CAPTION);
+    }
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+        SetWindowPos(hwnd,
+                 nullptr,
+                 0,
+                 0,
+                 0,
+                 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+    refreshWindowTheme(hwnd);
+
+#if defined(DWMWA_BORDER_COLOR)
+
+    const COLORREF none = 0xFFFFFFFEu;
+    const COLORREF defaultColor = 0xFFFFFFFFu;
+    COLORREF borderColor = enabled ? none : defaultColor;
+    DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &borderColor, sizeof(borderColor));
+#endif
+
+}
+
+
 
 void setImeCursorRect(Handle window, float x, float y, float width, float height) {
+
     HWND hwnd = static_cast<HWND>(window);
     if (hwnd == nullptr) {
         return;
