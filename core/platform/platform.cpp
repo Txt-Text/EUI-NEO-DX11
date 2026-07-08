@@ -9,10 +9,13 @@
 #include <cstdlib>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
+
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -73,7 +76,15 @@ std::atomic<bool>& uiUpdateRequested() {
     return requested;
 }
 
+#if defined(_WIN32)
+std::unordered_map<HWND, std::string>& cachedWindowIconPaths() {
+    static std::unordered_map<HWND, std::string> paths;
+    return paths;
+}
+#endif
+
 std::filesystem::path executableDirectory() {
+
 #if defined(_WIN32)
     std::vector<char> buffer(MAX_PATH);
     DWORD length = 0;
@@ -571,6 +582,132 @@ std::filesystem::path resolveIconPath(const std::string& iconPath) {
     return {};
 }
 
+#if defined(_WIN32)
+HICON resolveWindowIconHandle(HWND hwnd) {
+    if (hwnd == nullptr) {
+        return nullptr;
+    }
+
+    HICON icon = reinterpret_cast<HICON>(SendMessageW(hwnd, WM_GETICON, ICON_SMALL2, 0));
+    if (icon == nullptr) {
+        icon = reinterpret_cast<HICON>(SendMessageW(hwnd, WM_GETICON, ICON_SMALL, 0));
+    }
+    if (icon == nullptr) {
+        icon = reinterpret_cast<HICON>(SendMessageW(hwnd, WM_GETICON, ICON_BIG, 0));
+    }
+    if (icon == nullptr) {
+        icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICONSM));
+    }
+    if (icon == nullptr) {
+        icon = reinterpret_cast<HICON>(GetClassLongPtrW(hwnd, GCLP_HICON));
+    }
+    if (icon == nullptr) {
+        icon = LoadIconW(nullptr, IDI_APPLICATION);
+    }
+    return icon;
+}
+
+bool writeIconBitmapFile(HICON icon, const std::filesystem::path& path, int pixelSize) {
+    if (icon == nullptr || pixelSize <= 0) {
+        return false;
+    }
+
+    BITMAPINFO bitmapInfo{};
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = pixelSize;
+    bitmapInfo.bmiHeader.biHeight = -pixelSize;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HDC screenDc = GetDC(nullptr);
+    HDC memoryDc = CreateCompatibleDC(screenDc);
+    HBITMAP bitmap = CreateDIBSection(screenDc, &bitmapInfo, DIB_RGB_COLORS, &bits, nullptr, 0);
+    ReleaseDC(nullptr, screenDc);
+    if (memoryDc == nullptr || bitmap == nullptr || bits == nullptr) {
+        if (bitmap != nullptr) {
+            DeleteObject(bitmap);
+        }
+        if (memoryDc != nullptr) {
+            DeleteDC(memoryDc);
+        }
+        return false;
+    }
+
+    HGDIOBJ oldBitmap = SelectObject(memoryDc, bitmap);
+    std::memset(bits, 0, static_cast<std::size_t>(pixelSize) * static_cast<std::size_t>(pixelSize) * 4u);
+    const BOOL drawn = DrawIconEx(memoryDc, 0, 0, icon, pixelSize, pixelSize, 0, nullptr, DI_NORMAL);
+    SelectObject(memoryDc, oldBitmap);
+    DeleteDC(memoryDc);
+    if (!drawn) {
+        DeleteObject(bitmap);
+        return false;
+    }
+
+    const int rowBytes = pixelSize * 4;
+    const int imageBytes = rowBytes * pixelSize;
+    std::vector<unsigned char> bottomUp(static_cast<std::size_t>(imageBytes));
+    const unsigned char* source = static_cast<const unsigned char*>(bits);
+    for (int y = 0; y < pixelSize; ++y) {
+        std::memcpy(bottomUp.data() + static_cast<std::size_t>(y) * rowBytes,
+                    source + static_cast<std::size_t>(pixelSize - 1 - y) * rowBytes,
+                    static_cast<std::size_t>(rowBytes));
+    }
+    DeleteObject(bitmap);
+
+    BITMAPFILEHEADER fileHeader{};
+    BITMAPINFOHEADER infoHeader{};
+    fileHeader.bfType = 0x4D42;
+    fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    fileHeader.bfSize = fileHeader.bfOffBits + imageBytes;
+
+    infoHeader.biSize = sizeof(BITMAPINFOHEADER);
+    infoHeader.biWidth = pixelSize;
+    infoHeader.biHeight = pixelSize;
+    infoHeader.biPlanes = 1;
+    infoHeader.biBitCount = 32;
+    infoHeader.biCompression = BI_RGB;
+    infoHeader.biSizeImage = imageBytes;
+
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+        return false;
+    }
+    output.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
+    output.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
+    output.write(reinterpret_cast<const char*>(bottomUp.data()), static_cast<std::streamsize>(bottomUp.size()));
+    return output.good();
+}
+
+std::string cacheWindowIconBitmap(HWND hwnd) {
+    if (hwnd == nullptr) {
+        return {};
+    }
+
+    const HICON icon = resolveWindowIconHandle(hwnd);
+    if (icon == nullptr) {
+        return {};
+    }
+
+    std::error_code error;
+    std::filesystem::path cacheDir = std::filesystem::temp_directory_path(error);
+    if (error) {
+        return {};
+    }
+    cacheDir /= "eui_neo_window_icons";
+    const std::filesystem::path path = cacheDir / ("window_icon_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(reinterpret_cast<std::uintptr_t>(hwnd)) + ".bmp");
+    if (!writeIconBitmapFile(icon, path, 16)) {
+        return {};
+    }
+    cachedWindowIconPaths()[hwnd] = path.string();
+    return path.string();
+}
+#endif
+
+
 } // namespace
 
 bool repairCurrentWorkingDirectory() {
@@ -722,7 +859,160 @@ void setImeCursorRect(window::Handle window, float x, float y, float width, floa
     core::window::setImeCursorRect(window, x, y, width, height);
 }
 
+void beginWindowDrag(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+    ReleaseCapture();
+    PostMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+#else
+    (void)window;
+#endif
+}
+
+
+void closeWindow(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+#else
+    (void)window;
+#endif
+}
+
+void minimizeWindow(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd != nullptr) {
+        ShowWindow(hwnd, SW_MINIMIZE);
+    }
+#else
+    (void)window;
+#endif
+}
+
+void maximizeWindow(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd != nullptr) {
+        ShowWindow(hwnd, SW_MAXIMIZE);
+    }
+#else
+    (void)window;
+#endif
+}
+
+void restoreWindow(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd != nullptr) {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+#else
+    (void)window;
+#endif
+}
+
+bool isWindowMaximized(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    return hwnd != nullptr && IsZoomed(hwnd);
+#else
+    (void)window;
+    return false;
+#endif
+}
+
+void setWindowTopmost(window::Handle window, bool topmost) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return;
+    }
+    SetWindowPos(hwnd,
+                 topmost ? HWND_TOPMOST : HWND_NOTOPMOST,
+                 0,
+                 0,
+                 0,
+                 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#else
+    (void)window;
+    (void)topmost;
+#endif
+}
+
+bool isWindowTopmost(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return false;
+    }
+    const LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    return (exStyle & WS_EX_TOPMOST) != 0;
+#else
+    (void)window;
+    return false;
+#endif
+}
+
+WindowSystemMenuCommand showWindowSystemMenu(window::Handle window, int screenX, int screenY) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return WindowSystemMenuCommand::None;
+    }
+
+    HMENU menu = GetSystemMenu(hwnd, FALSE);
+    if (menu == nullptr) {
+        return WindowSystemMenuCommand::None;
+    }
+
+    const UINT flags = TPM_LEFTBUTTON | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY;
+    const UINT command = TrackPopupMenu(menu, flags, screenX, screenY, 0, hwnd, nullptr);
+    switch (command) {
+    case SC_RESTORE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0); return WindowSystemMenuCommand::Restore;
+    case SC_MOVE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_MOVE, 0); return WindowSystemMenuCommand::Move;
+    case SC_SIZE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_SIZE, 0); return WindowSystemMenuCommand::Size;
+    case SC_MINIMIZE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0); return WindowSystemMenuCommand::Minimize;
+    case SC_MAXIMIZE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_MAXIMIZE, 0); return WindowSystemMenuCommand::Maximize;
+    case SC_CLOSE: PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0); return WindowSystemMenuCommand::Close;
+    default: return WindowSystemMenuCommand::None;
+    }
+#else
+    (void)window;
+    (void)screenX;
+    (void)screenY;
+    return WindowSystemMenuCommand::None;
+#endif
+}
+
+std::string windowIconDataUri(window::Handle window) {
+#if defined(_WIN32)
+    HWND hwnd = static_cast<HWND>(window);
+    if (hwnd == nullptr) {
+        return {};
+    }
+
+    const auto it = cachedWindowIconPaths().find(hwnd);
+    if (it != cachedWindowIconPaths().end() && !it->second.empty()) {
+        return it->second;
+    }
+    return cacheWindowIconBitmap(hwnd);
+#else
+    (void)window;
+    return {};
+#endif
+}
+
 void requestFrame() {
+
+
     frameRequested().store(true);
     window::postEmptyEvent();
 }

@@ -10,6 +10,7 @@
 #include <mmsystem.h>
 
 #include "eui/app.h"
+#include "eui/detail/dsl_app_impl.h"
 #include "core/app/app_runner.h"
 #include "core/app/main_window_runtime.h"
 #include "core/input/input_state.h"
@@ -18,24 +19,27 @@
 #include "core/window/window_backend.h"
 
 #include <algorithm>
-#include <chrono>
-#include <memory>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "imm32.lib")
 
 namespace {
 
+constexpr double kInteractiveResizeRenderInterval = 1.0 / 90.0;
+constexpr int kResizeBorderThickness = 8;
+constexpr int kTopResizeInsetWhenMaximized = 8;
+
 struct WindowState : app::AppRunner {
     bool running = true;
     bool minimized = false;
     bool interactiveResize = false;
+    bool inFrameUpdate = false;
+    bool deferredRenderRequested = false;
     wchar_t pendingHighSurrogate = 0;
+    double nextResizeRenderTime = 0.0;
     app::MainWindowRuntime* runtime = nullptr;
     core::render::RenderBackend* renderBackend = nullptr;
 };
-
-
 
 struct TimerResolutionGuard {
     TimerResolutionGuard() {
@@ -56,9 +60,8 @@ float pointerScaleForWindow(HWND hwnd) {
     RECT client{};
     GetClientRect(hwnd, &client);
     const int width = std::max(1L, client.right - client.left);
-    const int height = std::max(1L, client.bottom - client.top);
-    (void)height;
-    return width > 0 ? 1.0f : 1.0f;
+    (void)width;
+    return 1.0f;
 }
 
 bool mapVirtualKey(WPARAM key, core::InputKey& mapped) {
@@ -95,8 +98,17 @@ void queueUtf16Text(HWND hwnd, const wchar_t* text, int length) {
     if (text == nullptr || length <= 0) {
         return;
     }
+
     char utf8[8] = {};
-    const int utf8Length = WideCharToMultiByte(CP_UTF8, 0, text, length, utf8, static_cast<int>(sizeof(utf8)), nullptr, nullptr);
+    const int utf8Length = WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        text,
+        length,
+        utf8,
+        static_cast<int>(sizeof(utf8)),
+        nullptr,
+        nullptr);
     if (utf8Length > 0) {
         core::queueTextInput(hwnd, std::string(utf8, utf8 + utf8Length));
     }
@@ -112,10 +124,26 @@ void queueCompositionText(HWND hwnd) {
     if (bytes > 0) {
         std::wstring wide(static_cast<std::size_t>(bytes / sizeof(wchar_t)), L'\0');
         ImmGetCompositionStringW(context, GCS_COMPSTR, wide.data(), bytes);
-        const int utf8Bytes = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+        const int utf8Bytes = WideCharToMultiByte(
+            CP_UTF8,
+            0,
+            wide.c_str(),
+            static_cast<int>(wide.size()),
+            nullptr,
+            0,
+            nullptr,
+            nullptr);
         std::string text(static_cast<std::size_t>(std::max(0, utf8Bytes)), '\0');
         if (utf8Bytes > 0) {
-            WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), static_cast<int>(wide.size()), text.data(), utf8Bytes, nullptr, nullptr);
+            WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                wide.c_str(),
+                static_cast<int>(wide.size()),
+                text.data(),
+                utf8Bytes,
+                nullptr,
+                nullptr);
         }
         core::queueTextEditing(hwnd, text);
     } else {
@@ -125,8 +153,18 @@ void queueCompositionText(HWND hwnd) {
     ImmReleaseContext(hwnd, context);
 }
 
-void renderWindowNow(HWND hwnd, WindowState& state) {
+void renderWindowNow(HWND hwnd, WindowState& state, bool force = false) {
     if (state.runtime == nullptr || state.renderBackend == nullptr || state.minimized || !state.running) {
+        return;
+    }
+    if (state.inFrameUpdate) {
+        state.deferredRenderRequested = true;
+        state.paintRequested = true;
+        return;
+    }
+
+    const double now = core::window::timeSeconds();
+    if (!force && now < state.nextResizeRenderTime) {
         return;
     }
 
@@ -145,6 +183,70 @@ void renderWindowNow(HWND hwnd, WindowState& state) {
         true,
         true,
         [] {});
+    state.nextResizeRenderTime = now + kInteractiveResizeRenderInterval;
+}
+
+bool customTitleBarActive() {
+    return app::customTitleBarEnabled();
+}
+
+bool isWindowMaximized(HWND hwnd) {
+    WINDOWPLACEMENT placement{};
+    placement.length = sizeof(placement);
+    return GetWindowPlacement(hwnd, &placement) && placement.showCmd == SW_MAXIMIZE;
+}
+
+int customTitleBarHeightPx(HWND hwnd) {
+    return std::max(1, static_cast<int>(std::lround(app::detail::customTitleBarHeight() * dpiScaleForWindow(hwnd))));
+}
+
+RECT currentMonitorWorkArea(HWND hwnd) {
+    RECT fallback{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &fallback, 0);
+
+    MONITORINFO monitorInfo{};
+    monitorInfo.cbSize = sizeof(monitorInfo);
+    const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if (monitor != nullptr && GetMonitorInfoW(monitor, &monitorInfo)) {
+        return monitorInfo.rcWork;
+    }
+    return fallback;
+}
+
+void applyMaximizedClientInsets(HWND hwnd, RECT& clientRect) {
+    if (!isWindowMaximized(hwnd)) {
+        return;
+    }
+
+    const RECT workArea = currentMonitorWorkArea(hwnd);
+    clientRect.left = workArea.left;
+    clientRect.top = workArea.top;
+    clientRect.right = workArea.right;
+    clientRect.bottom = workArea.bottom;
+}
+
+LRESULT hitTestResizeBorder(HWND hwnd, LPARAM lParam) {
+    RECT windowRect{};
+    if (!GetWindowRect(hwnd, &windowRect)) {
+        return HTCLIENT;
+    }
+
+    const int x = GET_X_LPARAM(lParam);
+    const int y = GET_Y_LPARAM(lParam);
+    const bool left = x >= windowRect.left && x < windowRect.left + kResizeBorderThickness;
+    const bool right = x < windowRect.right && x >= windowRect.right - kResizeBorderThickness;
+    const bool top = !isWindowMaximized(hwnd) && y >= windowRect.top && y < windowRect.top + kResizeBorderThickness;
+    const bool bottom = y < windowRect.bottom && y >= windowRect.bottom - kResizeBorderThickness;
+
+    if (top && left) return HTTOPLEFT;
+    if (top && right) return HTTOPRIGHT;
+    if (bottom && left) return HTBOTTOMLEFT;
+    if (bottom && right) return HTBOTTOMRIGHT;
+    if (left) return HTLEFT;
+    if (right) return HTRIGHT;
+    if (top) return HTTOP;
+    if (bottom) return HTBOTTOM;
+    return HTCLIENT;
 }
 
 LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -152,6 +254,60 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 
     switch (message) {
     case WM_NCCREATE:
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_NCCALCSIZE:
+        if (customTitleBarActive()) {
+            if (wParam && lParam != 0) {
+                NCCALCSIZE_PARAMS* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
+                applyMaximizedClientInsets(hwnd, params->rgrc[0]);
+                return 0;
+            }
+            RECT* rect = reinterpret_cast<RECT*>(lParam);
+            if (rect != nullptr) {
+                applyMaximizedClientInsets(hwnd, *rect);
+                return 0;
+            }
+            return 0;
+                }
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_NCHITTEST:
+        if (customTitleBarActive()) {
+            const LRESULT resizeHit = hitTestResizeBorder(hwnd, lParam);
+            if (resizeHit != HTCLIENT) {
+                return resizeHit;
+            }
+
+            RECT windowRect{};
+            if (GetWindowRect(hwnd, &windowRect)) {
+                const int x = GET_X_LPARAM(lParam);
+                const int y = GET_Y_LPARAM(lParam);
+                const int titleBarHeight = customTitleBarHeightPx(hwnd);
+                const int topInset = isWindowMaximized(hwnd) ? kTopResizeInsetWhenMaximized : 0;
+                if (y >= windowRect.top + topInset && y < windowRect.top + titleBarHeight) {
+                    return HTCLIENT;
+                }
+            }
+            return HTCLIENT;
+        }
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_GETMINMAXINFO:
+        if (customTitleBarActive()) {
+            MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lParam);
+            if (info != nullptr) {
+                MONITORINFO monitorInfo{};
+                monitorInfo.cbSize = sizeof(monitorInfo);
+                const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if (monitor != nullptr && GetMonitorInfoW(monitor, &monitorInfo)) {
+                    const RECT& workArea = monitorInfo.rcWork;
+                    const RECT& monitorArea = monitorInfo.rcMonitor;
+                    info->ptMaxPosition.x = workArea.left - monitorArea.left;
+                    info->ptMaxPosition.y = workArea.top - monitorArea.top;
+                    info->ptMaxSize.x = workArea.right - workArea.left;
+                    info->ptMaxSize.y = workArea.bottom - workArea.top;
+                }
+            }
+            return 0;
+        }
         return DefWindowProcW(hwnd, message, wParam, lParam);
     case WM_CLOSE:
         if (state) {
@@ -162,20 +318,21 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
-        case WM_SIZE:
+    case WM_SIZE:
         if (state) {
             state->minimized = wParam == SIZE_MINIMIZED;
-            state->paintRequested = true;
-            state->requestImmediateFrame();
             state->resetTiming(core::window::timeSeconds());
-            app::detail::requestFullPaint();
             if (!state->minimized) {
-                renderWindowNow(hwnd, *state);
+                state->paintRequested = true;
+                if (state->interactiveResize) {
+                    renderWindowNow(hwnd, *state, false);
+                } else {
+                    state->deferredRenderRequested = true;
+                }
             }
         }
         return 0;
-
-        case WM_DPICHANGED:
+    case WM_DPICHANGED:
         if (state) {
             const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
             if (suggested != nullptr) {
@@ -187,48 +344,57 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
                              suggested->bottom - suggested->top,
                              SWP_NOZORDER | SWP_NOACTIVATE);
             }
-            state->paintRequested = true;
-            state->requestImmediateFrame();
             state->resetTiming(core::window::timeSeconds());
-            app::detail::requestFullPaint();
-            renderWindowNow(hwnd, *state);
+            state->paintRequested = true;
+            state->deferredRenderRequested = true;
         }
         return 0;
-
-        case WM_ENTERSIZEMOVE:
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
+        core::window::refreshWindowTheme(hwnd);
+        if (state) {
+            state->paintRequested = true;
+            state->deferredRenderRequested = true;
+        }
+        return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_ENTERSIZEMOVE:
         if (state) {
             state->interactiveResize = true;
-            state->paintRequested = true;
-            state->requestImmediateFrame();
+            core::syncPointerState(hwnd, pointerScaleForWindow(hwnd));
             state->resetTiming(core::window::timeSeconds());
+            state->nextResizeRenderTime = 0.0;
         }
         return 0;
     case WM_EXITSIZEMOVE:
         if (state) {
             state->interactiveResize = false;
-            state->paintRequested = true;
-            state->requestImmediateFrame();
+            core::syncPointerState(hwnd, pointerScaleForWindow(hwnd));
+            app::detail::cancelPointerInteractions();
             state->resetTiming(core::window::timeSeconds());
-            app::detail::requestFullPaint();
+            state->nextResizeRenderTime = 0.0;
+            state->paintRequested = true;
+            state->deferredRenderRequested = true;
         }
         return 0;
     case WM_MOUSEWHEEL:
-
-        core::queueScrollInput(hwnd, 0.0, static_cast<double>(GET_WHEEL_DELTA_WPARAM(wParam)) / static_cast<double>(WHEEL_DELTA));
+        core::queueScrollInput(
+            hwnd,
+            0.0,
+            static_cast<double>(GET_WHEEL_DELTA_WPARAM(wParam)) / static_cast<double>(WHEEL_DELTA));
         if (state) {
             state->paintRequested = true;
         }
         return 0;
-        case WM_CHAR: {
+    case WM_CHAR: {
         if (state == nullptr) {
             return 0;
-        }
+            }
 
         const wchar_t value = static_cast<wchar_t>(wParam);
         if (isHighSurrogate(value)) {
             state->pendingHighSurrogate = value;
             return 0;
-        }
+            }
 
         if (isLowSurrogate(value) && state->pendingHighSurrogate != 0) {
             const wchar_t pair[2] = {state->pendingHighSurrogate, value};
@@ -243,7 +409,6 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
         state->paintRequested = true;
         return 0;
     }
-
     case WM_IME_STARTCOMPOSITION:
     case WM_IME_COMPOSITION:
         queueCompositionText(hwnd);
@@ -277,7 +442,6 @@ LRESULT CALLBACK MainWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM l
 } // namespace
 
 int eui_win32_entry() {
-
     core::platform::repairCurrentWorkingDirectory();
     core::render::initializeRenderBackendLoader();
     TimerResolutionGuard timerResolution;
@@ -347,13 +511,14 @@ int eui_win32_entry() {
         const float dpiScale = dpiScaleForWindow(window);
         const float pointerScale = pointerScaleForWindow(window);
 
-                mainWindowRuntime.runFrame(
+        state.inFrameUpdate = true;
+        mainWindowRuntime.runFrame(
             window,
             *renderBackend,
             {framebufferWidth, framebufferHeight, dpiScale, pointerScale},
             core::window::timeSeconds(),
-            state.interactiveResize ? 240.0 : 60.0,
-            true,
+            state.interactiveResize ? 90.0 : 60.0,
+            !state.interactiveResize,
             [] {},
             [&](float, bool) {},
             [&](const char* title) {
@@ -362,6 +527,12 @@ int eui_win32_entry() {
             [] {
                 return false;
             });
+        state.inFrameUpdate = false;
+
+        if (state.deferredRenderRequested && state.running && !state.minimized) {
+            state.deferredRenderRequested = false;
+            renderWindowNow(window, state, true);
+        }
 
         if (!state.paintRequested && !app::isAnimating() && !core::hasPendingPointerInput(window, pointerScale)) {
             MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
@@ -381,3 +552,4 @@ int eui_win32_entry() {
     core::window::destroyWindow(window);
     return 0;
 }
+

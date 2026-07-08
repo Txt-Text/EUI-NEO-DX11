@@ -24,6 +24,11 @@ void setCursor(Handle window, CursorHandle cursor);
 void destroyCursor(CursorHandle cursor);
 
 void setWindowIcon(Handle window, int width, int height, unsigned char* pixels);
+void setWindowCustomTitleBar(Handle window, bool enabled);
+bool systemUsesDarkMode();
+void refreshWindowTheme(Handle window);
 void setImeCursorRect(Handle window, float x, float y, float width, float height);
+
+
 
 } // namespace core::window

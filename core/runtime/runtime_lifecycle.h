@@ -131,7 +131,17 @@ inline void Runtime::requestFullPaint() {
     paintRequested_ = true;
 }
 
+inline void Runtime::cancelPointerInteractions() {
+    for (auto& item : interactions_) {
+        item.second.state = {};
+    }
+    hoverTargetCacheValid_ = false;
+    wantsHandCursor_ = false;
+    paintRequested_ = true;
+}
+
 inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, const Color& clearColor) {
+
     core::render::RenderBackend* renderBackend = core::render::activeRenderBackend();
     if (renderBackend == nullptr) {
         return;

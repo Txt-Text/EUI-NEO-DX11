@@ -49,7 +49,10 @@ public:
 
     void requestFullPaint();
 
+    void cancelPointerInteractions();
+
     void render(int windowWidth, int windowHeight, float dpiScale, const Color& clearColor);
+
 
     void render(int windowWidth, int windowHeight, float dpiScale);
 

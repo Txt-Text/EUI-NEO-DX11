@@ -3,6 +3,7 @@
 #include "eui/app.h"
 #include "eui/async.h"
 
+#include <functional>
 #include <string>
 #include <utility>
 
@@ -24,6 +25,7 @@ struct DslAppConfig {
     const char* textFontFileValue = "";
     const char* iconFontFileValue = "";
     bool trayEnabledValue = false;
+    bool customTitleBarValue = false;
     const char* trayTitleValue = "";
     const char* trayIconPathValue = "";
 
@@ -53,6 +55,10 @@ struct DslAppConfig {
     }
     DslAppConfig& tray(bool value = true) {
         trayEnabledValue = value;
+        return *this;
+    }
+    DslAppConfig& customTitleBar(bool value = true) {
+        customTitleBarValue = value;
         return *this;
     }
     DslAppConfig& trayTitle(const char* value) {
