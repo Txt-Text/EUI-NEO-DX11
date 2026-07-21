@@ -412,9 +412,10 @@
     <ClCompile Include="core\render\stb_image_impl.cpp">
       <Filter>头文件\core\render</Filter>
     </ClCompile>
-    <ClCompile Include="core\render\text_impl_bridge.cpp">
+        <ClCompile Include="core\render\text.cpp">
       <Filter>头文件\core\render</Filter>
     </ClCompile>
+
     <ClCompile Include="core\render\image.cpp">
       <Filter>头文件\core\render</Filter>
     </ClCompile>
@@ -435,3 +436,4 @@
     </ClCompile>
   </ItemGroup>
 </Project>
+

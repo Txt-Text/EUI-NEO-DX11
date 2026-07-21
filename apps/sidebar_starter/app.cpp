@@ -13,6 +13,7 @@ const DslAppConfig& dslAppConfig() {
         .pageId("sidebar_starter")
         .clearColor({0.07f, 0.08f, 0.10f, 1.0f})
         .windowSize(1380, 960)
+        .customTitleBar()
         .fps(90.0)
         .iconPath("assets/icon.png")
         .iconFont("assets/Font Awesome 7 Free-Solid-900.otf");

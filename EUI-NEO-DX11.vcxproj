@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -84,6 +84,7 @@
     <ClInclude Include="core\platform\tray_bridge.h" />
     <ClInclude Include="core\render\dx11\dx11_backend.h" />
     <ClInclude Include="core\render\dx11\dx11_external_context.h" />
+    <ClInclude Include="core\render\dx11\dx11_font_support.h" />
     <ClInclude Include="core\render\image.h" />
     <ClInclude Include="core\render\image_source.h" />
     <ClInclude Include="core\render\image_types.h" />
@@ -142,13 +143,16 @@
     <ClCompile Include="core\platform\tray_bridge.c" />
     <ClCompile Include="core\render\dx11\dx11_backend.cpp" />
     <ClCompile Include="core\render\dx11\dx11_external_context.cpp" />
+    <ClCompile Include="core\render\dx11\dx11_font_support.cpp" />
     <ClCompile Include="core\render\image.cpp" />
     <ClCompile Include="core\render\image_facade.cpp" />
     <ClCompile Include="core\render\image_source.cpp" />
     <ClCompile Include="core\render\primitive.cpp" />
     <ClCompile Include="core\render\render_backend.cpp" />
     <ClCompile Include="core\render\stb_image_impl.cpp" />
-    <ClCompile Include="core\render\text_impl_bridge.cpp" />
+            <ClCompile Include="core\render\text.cpp" />
+
+
     <ClCompile Include="core\window\window_backend.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -289,3 +293,4 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
+

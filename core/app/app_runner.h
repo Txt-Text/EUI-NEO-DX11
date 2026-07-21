@@ -32,6 +32,21 @@ struct AppRunner {
     double accumulatedPolygonDraws = 0.0;
     double accumulatedTextPrepares = 0.0;
     double accumulatedTextDraws = 0.0;
+    double accumulatedTextLayoutRebuilds = 0.0;
+    double accumulatedTextFormatCreates = 0.0;
+    double accumulatedTextFormatCacheHits = 0.0;
+    double accumulatedTextFormatCacheMisses = 0.0;
+    double accumulatedTextLayoutCreates = 0.0;
+    double accumulatedTextLayoutCacheHits = 0.0;
+    double accumulatedTextLayoutCacheMisses = 0.0;
+    double accumulatedFontPathResolveAttempts = 0.0;
+    double accumulatedFontFileExistsChecks = 0.0;
+    double accumulatedFontPathCacheHits = 0.0;
+    double accumulatedFontPathCacheMisses = 0.0;
+    double accumulatedFontRegistrations = 0.0;
+    double accumulatedFontRegistrationCacheHits = 0.0;
+    double accumulatedFontCollectionCacheHits = 0.0;
+    double accumulatedFontCollectionCacheMisses = 0.0;
     double accumulatedImageDraws = 0.0;
     double accumulatedRetainedLayerHits = 0.0;
     double accumulatedRetainedLayerMisses = 0.0;
@@ -40,6 +55,9 @@ struct AppRunner {
     double accumulatedClearCalls = 0.0;
     double accumulatedRenderDirectPasses = 0.0;
     double accumulatedCacheBlits = 0.0;
+    double accumulatedRenderCacheFullRebuilds = 0.0;
+    double accumulatedRenderCacheDirtyBlits = 0.0;
+    double accumulatedRenderCacheExistingBlits = 0.0;
     double accumulatedBackendRenderPasses = 0.0;
     double accumulatedBackendRenderPassAreaPercent = 0.0;
     double accumulatedBackendCopyRegions = 0.0;
@@ -165,6 +183,21 @@ struct AppRunner {
         accumulatedPolygonDraws += static_cast<double>(stats.polygonDraws);
         accumulatedTextPrepares += static_cast<double>(stats.textPrepares);
         accumulatedTextDraws += static_cast<double>(stats.textDraws);
+        accumulatedTextLayoutRebuilds += static_cast<double>(stats.textLayoutRebuilds);
+        accumulatedTextFormatCreates += static_cast<double>(stats.textFormatCreates);
+        accumulatedTextFormatCacheHits += static_cast<double>(stats.textFormatCacheHits);
+        accumulatedTextFormatCacheMisses += static_cast<double>(stats.textFormatCacheMisses);
+        accumulatedTextLayoutCreates += static_cast<double>(stats.textLayoutCreates);
+        accumulatedTextLayoutCacheHits += static_cast<double>(stats.textLayoutCacheHits);
+        accumulatedTextLayoutCacheMisses += static_cast<double>(stats.textLayoutCacheMisses);
+        accumulatedFontPathResolveAttempts += static_cast<double>(stats.fontPathResolveAttempts);
+        accumulatedFontFileExistsChecks += static_cast<double>(stats.fontFileExistsChecks);
+        accumulatedFontPathCacheHits += static_cast<double>(stats.fontPathCacheHits);
+        accumulatedFontPathCacheMisses += static_cast<double>(stats.fontPathCacheMisses);
+        accumulatedFontRegistrations += static_cast<double>(stats.fontRegistrations);
+        accumulatedFontRegistrationCacheHits += static_cast<double>(stats.fontRegistrationCacheHits);
+        accumulatedFontCollectionCacheHits += static_cast<double>(stats.fontCollectionCacheHits);
+        accumulatedFontCollectionCacheMisses += static_cast<double>(stats.fontCollectionCacheMisses);
         accumulatedImageDraws += static_cast<double>(stats.imageDraws);
         accumulatedRetainedLayerHits += static_cast<double>(stats.retainedLayerHits);
         accumulatedRetainedLayerMisses += static_cast<double>(stats.retainedLayerMisses);
@@ -173,6 +206,9 @@ struct AppRunner {
         accumulatedClearCalls += static_cast<double>(stats.clearCalls);
         accumulatedRenderDirectPasses += static_cast<double>(stats.renderDirectPasses);
         accumulatedCacheBlits += static_cast<double>(stats.cacheBlits);
+        accumulatedRenderCacheFullRebuilds += static_cast<double>(stats.renderCacheFullRebuilds);
+        accumulatedRenderCacheDirtyBlits += static_cast<double>(stats.renderCacheDirtyBlits);
+        accumulatedRenderCacheExistingBlits += static_cast<double>(stats.renderCacheExistingBlits);
         accumulatedBackendRenderPasses += static_cast<double>(stats.backendRenderPasses);
         accumulatedBackendRenderPassAreaPercent += static_cast<double>(stats.backendRenderPassPixels) * 100.0 / framePixels;
         accumulatedBackendCopyRegions += static_cast<double>(stats.backendCopyRegions);
@@ -225,6 +261,21 @@ struct AppRunner {
         const double averagePolygonDraws = accumulatedPolygonDraws / statsFrames;
         const double averageTextPrepares = accumulatedTextPrepares / statsFrames;
         const double averageTextDraws = accumulatedTextDraws / statsFrames;
+        const double averageTextLayoutRebuilds = accumulatedTextLayoutRebuilds / statsFrames;
+        const double averageTextFormatCreates = accumulatedTextFormatCreates / statsFrames;
+        const double averageTextFormatCacheHits = accumulatedTextFormatCacheHits / statsFrames;
+        const double averageTextFormatCacheMisses = accumulatedTextFormatCacheMisses / statsFrames;
+        const double averageTextLayoutCreates = accumulatedTextLayoutCreates / statsFrames;
+        const double averageTextLayoutCacheHits = accumulatedTextLayoutCacheHits / statsFrames;
+        const double averageTextLayoutCacheMisses = accumulatedTextLayoutCacheMisses / statsFrames;
+        const double averageFontPathResolveAttempts = accumulatedFontPathResolveAttempts / statsFrames;
+        const double averageFontFileExistsChecks = accumulatedFontFileExistsChecks / statsFrames;
+        const double averageFontPathCacheHits = accumulatedFontPathCacheHits / statsFrames;
+        const double averageFontPathCacheMisses = accumulatedFontPathCacheMisses / statsFrames;
+        const double averageFontRegistrations = accumulatedFontRegistrations / statsFrames;
+        const double averageFontRegistrationCacheHits = accumulatedFontRegistrationCacheHits / statsFrames;
+        const double averageFontCollectionCacheHits = accumulatedFontCollectionCacheHits / statsFrames;
+        const double averageFontCollectionCacheMisses = accumulatedFontCollectionCacheMisses / statsFrames;
         const double averageImageDraws = accumulatedImageDraws / statsFrames;
         const double averageRetainedLayerHits = accumulatedRetainedLayerHits / statsFrames;
         const double averageRetainedLayerMisses = accumulatedRetainedLayerMisses / statsFrames;
@@ -233,6 +284,9 @@ struct AppRunner {
         const double averageClearCalls = accumulatedClearCalls / statsFrames;
         const double averageRenderDirectPasses = accumulatedRenderDirectPasses / statsFrames;
         const double averageCacheBlits = accumulatedCacheBlits / statsFrames;
+        const double averageRenderCacheFullRebuilds = accumulatedRenderCacheFullRebuilds / statsFrames;
+        const double averageRenderCacheDirtyBlits = accumulatedRenderCacheDirtyBlits / statsFrames;
+        const double averageRenderCacheExistingBlits = accumulatedRenderCacheExistingBlits / statsFrames;
         const double averageBackendRenderPasses = accumulatedBackendRenderPasses / statsFrames;
         const double averageBackendRenderPassAreaPercent = accumulatedBackendRenderPassAreaPercent / statsFrames;
         const double averageBackendCopyRegions = accumulatedBackendCopyRegions / statsFrames;
@@ -247,18 +301,33 @@ struct AppRunner {
         const double cachePercent = static_cast<double>(renderCacheFrames) * 100.0 / statsFrames;
         const double cacheRecreatedPercent = static_cast<double>(renderCacheRecreatedFrames) * 100.0 / statsFrames;
 
-        char renderStatsText[384];
+        char renderStatsText[512];
         if (measuredRenderStatsFrames > 0) {
             std::snprintf(renderStatsText,
                           sizeof(renderStatsText),
-                          " | Dirty %.1f/%.0f%% | Draw R%.0f P%.0f TP%.0f T%.0f I%.0f | Layer H%.0f M%.0f D%.0f Re%.0f | Pass %.1f C%.1f B%.1f/%.0f%% | Pipe RP%.1f/%.0f%% Cp%.1f Ba%.1f Sub%.1f Pr%.1f/%.0f%% Inc%.1f/%.1f Rs%.1f | Full %.0f%% Cache %.0f%% Re %.0f%%",
+                          " | Dirty %.1f/%.0f%% | Draw R%.0f P%.0f TP%.0f T%.0f TR%.0f TF%.0f/%.0f/%.0f TL%.0f/%.0f/%.0f I%.0f | Font Rp%.0f Ex%.0f Ch%.0f Cm%.0f Rg%.0f Rh%.0f Fh%.0f Fm%.0f | Layer H%.0f M%.0f D%.0f Re%.0f | Pass %.1f C%.1f B%.1f F%.1f D%.1f E%.1f/%.0f%% | Pipe RP%.1f/%.0f%% Cp%.1f Ba%.1f Sub%.1f Pr%.1f/%.0f%% Inc%.1f/%.1f Rs%.1f | Full %.0f%% Cache %.0f%% Re %.0f%%",
                           averageDirtyRects,
                           averageDirtyAreaPercent,
                           averageRectDraws,
                           averagePolygonDraws,
                           averageTextPrepares,
                           averageTextDraws,
+                          averageTextLayoutRebuilds,
+                          averageTextFormatCreates,
+                          averageTextFormatCacheHits,
+                          averageTextFormatCacheMisses,
+                          averageTextLayoutCreates,
+                          averageTextLayoutCacheHits,
+                          averageTextLayoutCacheMisses,
                           averageImageDraws,
+                          averageFontPathResolveAttempts,
+                          averageFontFileExistsChecks,
+                          averageFontPathCacheHits,
+                          averageFontPathCacheMisses,
+                          averageFontRegistrations,
+                          averageFontRegistrationCacheHits,
+                          averageFontCollectionCacheHits,
+                          averageFontCollectionCacheMisses,
                           averageRetainedLayerHits,
                           averageRetainedLayerMisses,
                           averageRetainedLayerDraws,
@@ -266,6 +335,9 @@ struct AppRunner {
                           averageRenderDirectPasses,
                           averageClearCalls,
                           averageCacheBlits,
+                          averageRenderCacheFullRebuilds,
+                          averageRenderCacheDirtyBlits,
+                          averageRenderCacheExistingBlits,
                           averageBlitAreaPercent,
                           averageBackendRenderPasses,
                           averageBackendRenderPassAreaPercent,
@@ -284,7 +356,7 @@ struct AppRunner {
             renderStatsText[0] = '\0';
         }
 
-        char title[768];
+        char title[896];
         if (!usage.hasGpuPercent && std::isnan(averageRenderMs)) {
             std::snprintf(title,
                           sizeof(title),
@@ -332,6 +404,21 @@ struct AppRunner {
         accumulatedPolygonDraws = 0.0;
         accumulatedTextPrepares = 0.0;
         accumulatedTextDraws = 0.0;
+        accumulatedTextLayoutRebuilds = 0.0;
+        accumulatedTextFormatCreates = 0.0;
+        accumulatedTextFormatCacheHits = 0.0;
+        accumulatedTextFormatCacheMisses = 0.0;
+        accumulatedTextLayoutCreates = 0.0;
+        accumulatedTextLayoutCacheHits = 0.0;
+        accumulatedTextLayoutCacheMisses = 0.0;
+        accumulatedFontPathResolveAttempts = 0.0;
+        accumulatedFontFileExistsChecks = 0.0;
+        accumulatedFontPathCacheHits = 0.0;
+        accumulatedFontPathCacheMisses = 0.0;
+        accumulatedFontRegistrations = 0.0;
+        accumulatedFontRegistrationCacheHits = 0.0;
+        accumulatedFontCollectionCacheHits = 0.0;
+        accumulatedFontCollectionCacheMisses = 0.0;
         accumulatedImageDraws = 0.0;
         accumulatedRetainedLayerHits = 0.0;
         accumulatedRetainedLayerMisses = 0.0;
@@ -340,6 +427,9 @@ struct AppRunner {
         accumulatedClearCalls = 0.0;
         accumulatedRenderDirectPasses = 0.0;
         accumulatedCacheBlits = 0.0;
+        accumulatedRenderCacheFullRebuilds = 0.0;
+        accumulatedRenderCacheDirtyBlits = 0.0;
+        accumulatedRenderCacheExistingBlits = 0.0;
         accumulatedBackendRenderPasses = 0.0;
         accumulatedBackendRenderPassAreaPercent = 0.0;
         accumulatedBackendCopyRegions = 0.0;

@@ -45,6 +45,12 @@ public:
     TextureHandle createTexture(const unsigned char* pixels, int width, int height) override;
     bool updateTexture(TextureHandle handle, const unsigned char* pixels, int width, int height) override;
     void destroyTexture(TextureHandle handle) override;
+    LayerHandle createLayer(int width, int height) override;
+    bool resizeLayer(LayerHandle layer, int width, int height) override;
+    void destroyLayer(LayerHandle layer) override;
+    bool beginLayerFrame(LayerHandle layer, int width, int height) override;
+    void endLayerFrame() override;
+    TextureHandle layerTexture(LayerHandle layer) override;
     void drawTexture(TextureHandle handle,
                      const float* vertices,
                      std::size_t vertexFloatCount,
@@ -65,6 +71,8 @@ private:
     void restoreFrameDrawingState();
     bool createDeviceResources();
     bool createWindowSizeDependentResources(int width, int height);
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> createTargetBitmap(int width, int height, D2D1_BITMAP_OPTIONS options) const;
+    void setActiveTarget(ID2D1Bitmap1* target);
     void releaseWindowSizeDependentResources();
     D2D1_COLOR_F toD2DColor(const core::Color& color, float opacityScale = 1.0f) const;
     void fillGeometryWithColor(ID2D1Geometry* geometry, const core::Color& color, float opacity);
@@ -82,6 +90,9 @@ private:
     bool hostManagesBeginEndDraw_ = false;
     bool renderCacheRecreated_ = false;
     bool clipActive_ = false;
+    bool renderCacheFrameActive_ = false;
+    bool layerFrameActive_ = false;
+    core::Rect activeClipRect_{};
 
     Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3dContext_;
@@ -89,13 +100,17 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Texture2D> backBufferTexture_;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> renderTargetView_;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizerState_;
-
     Microsoft::WRL::ComPtr<ID2D1Factory1> d2dFactory_;
     Microsoft::WRL::ComPtr<ID2D1Device> d2dDevice_;
     Microsoft::WRL::ComPtr<ID2D1DeviceContext> d2dContext_;
     Microsoft::WRL::ComPtr<ID2D1DrawingStateBlock1> drawingStateBlock_;
     Microsoft::WRL::ComPtr<ID2D1Bitmap1> d2dTargetBitmap_;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap1> renderCacheBitmap_;
+    Microsoft::WRL::ComPtr<ID2D1Image> frameTargetImage_;
+    Microsoft::WRL::ComPtr<ID2D1Image> layerRestoreTargetImage_;
     Microsoft::WRL::ComPtr<IDWriteFactory> dwriteFactory_;
 };
+
+
 
 } // namespace core::render

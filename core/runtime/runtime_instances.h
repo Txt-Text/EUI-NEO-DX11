@@ -85,9 +85,12 @@ struct TextInstance {
     VerticalAlign verticalAlign = VerticalAlign::Top;
     float lineHeight = 0.0f;
     std::string contentDirtyKey;
+    std::string layoutSyncKey;
+    std::string paintSyncKey;
 };
 
 struct ImageInstance {
+
     std::unique_ptr<ImagePrimitive> primitive = std::make_unique<ImagePrimitive>();
     bool initialized = false;
     bool seen = false;

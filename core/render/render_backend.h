@@ -36,6 +36,8 @@ struct TextAtlasPageData {
 struct TextDrawCommand {
     const char* utf8Text = nullptr;
     const char* fontFamily = nullptr;
+    // 由 TextPrimitive::prepare() 生成并复用的 DirectWrite layout 句柄。
+    void* preparedLayout = nullptr;
     float originX = 0.0f;
     float originY = 0.0f;
     float maxWidth = 0.0f;
@@ -64,6 +66,9 @@ struct RenderFrameStats {
     int clearCalls = 0;
     int renderDirectPasses = 0;
     int cacheBlits = 0;
+    int renderCacheFullRebuilds = 0;
+    int renderCacheDirtyBlits = 0;
+    int renderCacheExistingBlits = 0;
     int backendRenderPasses = 0;
     std::uint64_t backendRenderPassPixels = 0;
     int backendCopyRegions = 0;
@@ -78,6 +83,22 @@ struct RenderFrameStats {
     int polygonDraws = 0;
     int textPrepares = 0;
     int textDraws = 0;
+    // 下面这组字段专门用于观察文本布局、字体路径和字体集合缓存的命中情况。
+    int textLayoutRebuilds = 0;
+    int textFormatCreates = 0;
+    int textFormatCacheHits = 0;
+    int textFormatCacheMisses = 0;
+    int textLayoutCreates = 0;
+    int textLayoutCacheHits = 0;
+    int textLayoutCacheMisses = 0;
+    int fontPathResolveAttempts = 0;
+    int fontFileExistsChecks = 0;
+    int fontPathCacheHits = 0;
+    int fontPathCacheMisses = 0;
+    int fontRegistrations = 0;
+    int fontRegistrationCacheHits = 0;
+    int fontCollectionCacheHits = 0;
+    int fontCollectionCacheMisses = 0;
     int imageDraws = 0;
     int retainedLayerHits = 0;
     int retainedLayerMisses = 0;

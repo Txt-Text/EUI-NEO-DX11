@@ -11,6 +11,8 @@
 #include "core/dsl_runtime.h"
 #include "core/platform/platform.h"
 #include "core/render/text.h"
+#include "core/render/dx11/dx11_font_support.h"
+
 #include "core/window/window_backend.h"
 
 #include <algorithm>
@@ -679,9 +681,11 @@ inline bool initialize(core::window::Handle window) {
 
 
     const DslAppConfig& config = dslAppConfig();
-    core::TextPrimitive::setDefaultFontFiles(
+        core::TextPrimitive::setDefaultFontFiles(
         config.textFontFileValue != nullptr ? config.textFontFileValue : "",
         config.iconFontFileValue != nullptr ? config.iconFontFileValue : "");
+    core::render::dx11::warmDefaultFontCaches();
+
 
     detail::DslAppState& state = detail::dslAppState();
     state.window = window;

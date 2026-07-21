@@ -165,6 +165,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
 
     if (!renderBackend->ensureRenderCache(windowWidth, windowHeight)) {
         ++stats.clearCalls;
+        ++stats.renderCacheFullRebuilds;
         renderBackend->clear(clearColor);
         ++stats.renderDirectPasses;
         renderDirect(*renderBackend, windowWidth, windowHeight, dpiScale);
@@ -173,6 +174,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         core::render::publishRenderFrameStats();
         return;
     }
+
     stats.usedRenderCache = true;
     if (renderBackend->renderCacheWasRecreated()) {
         fullPaintRequested_ = true;
@@ -180,6 +182,8 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     }
 
     if (!fullPaintRequested_ && dirtyRects_.empty()) {
+        ++stats.cacheBlits;
+        ++stats.renderCacheExistingBlits;
         renderBackend->blitRenderCache(windowWidth, windowHeight, core::render::RenderCacheBlitMode::Existing);
         core::render::publishRenderFrameStats();
         return;
@@ -191,10 +195,13 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
         : core::dsl::resolveDirtyRects(dirtyRects_, windowWidth, windowHeight, dpiScale);
     if (!fullPaintRequested_ && dirtyRects.empty()) {
         dirtyRects_.clear();
+        ++stats.cacheBlits;
+        ++stats.renderCacheExistingBlits;
         renderBackend->blitRenderCache(windowWidth, windowHeight, core::render::RenderCacheBlitMode::Existing);
         core::render::publishRenderFrameStats();
         return;
     }
+
     stats.dirtyRectCount = static_cast<int>(dirtyRects.size());
     for (const Rect& dirty : dirtyRects) {
         const float width = std::max(0.0f, dirty.width);
@@ -222,6 +229,12 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     }
 
     renderBackend->endRenderCacheFrame();
+    ++stats.cacheBlits;
+    if (fullPaintRequested_) {
+        ++stats.renderCacheFullRebuilds;
+    } else {
+        ++stats.renderCacheDirtyBlits;
+    }
     renderBackend->blitRenderCache(windowWidth,
                                    windowHeight,
                                    fullPaintRequested_ ? core::render::RenderCacheBlitMode::Full
@@ -233,6 +246,7 @@ inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale, c
     paintRequested_ = retainedLayerRebuilt;
     core::render::publishRenderFrameStats();
 }
+
 
 inline void Runtime::render(int windowWidth, int windowHeight, float dpiScale) {
     core::render::RenderBackend* renderBackend = core::render::activeRenderBackend();
